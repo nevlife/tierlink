@@ -26,7 +26,10 @@ public:
   const StreamSpec & spec(std::size_t id) const { return specs_[id]; }
   std::size_t size() const { return specs_.size(); }
   void set_budget(std::uint64_t bps) { budget_bps_ = bps; }
-  Pushed push(std::size_t id, Item item) { return outboxes_[id].push(std::move(item)); }
+  Pushed push(std::size_t id, Item item, Nanos now)
+  {
+    return outboxes_[id].push(std::move(item), now);
+  }
 
   // An item larger than the tokens left is still sent and leaves the bucket in debt, so a large
   // frame is delayed by its own size instead of waiting forever.

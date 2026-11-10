@@ -134,7 +134,7 @@ std::optional<std::size_t> Uplink::stream_id(std::string_view name) const
 Pushed Uplink::push(std::size_t id, std::vector<std::uint8_t> payload, bool keyframe)
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  const Pushed pushed = scheduler_.push(id, Item{std::move(payload), keyframe});
+  const Pushed pushed = scheduler_.push(id, Item{std::move(payload), keyframe}, steady_now());
   if (pushed == Pushed::KeyframeNeeded) {
     keyframe_requested_[id] = true;
   }

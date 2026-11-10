@@ -12,6 +12,7 @@ find_package(zenoh_cpp_vendor REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
   src/aimd.cpp
+  src/control.cpp
   src/delay_tracker.cpp
   src/outbox.cpp
   src/scheduler.cpp
@@ -24,7 +25,11 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 )
 target_link_libraries(${PROJECT_NAME} PUBLIC zenohcxx::zenohc)
 
+add_executable(tierlink_server src/server_main.cpp)
+target_link_libraries(tierlink_server ${PROJECT_NAME})
+
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
+install(TARGETS tierlink_server DESTINATION lib/${PROJECT_NAME})
 install(TARGETS ${PROJECT_NAME} EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -33,7 +38,7 @@ install(TARGETS ${PROJECT_NAME} EXPORT export_${PROJECT_NAME}
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  foreach(name rate_controller delay_tracker outbox scheduler wire zenoh_link)
+  foreach(name rate_controller delay_tracker outbox scheduler wire zenoh_link control)
     ament_add_gtest(test_${name} test/test_${name}.cpp)
     target_link_libraries(test_${name} ${PROJECT_NAME})
   endforeach()

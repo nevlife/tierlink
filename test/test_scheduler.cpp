@@ -47,8 +47,8 @@ TEST(Scheduler, TeleopGoesBeforeMonitor)
 {
   auto s = scheduler(1'000'000);
   s.next(0ms);
-  s.push(0, item(0, 10));
-  s.push(1, item(1, 10));
+  s.push(0, item(0, 10), 0ms);
+  s.push(1, item(1, 10), 0ms);
   EXPECT_EQ(s.next(10ms)->first, 1u);
   EXPECT_EQ(s.next(10ms)->first, 0u);
   EXPECT_FALSE(s.next(10ms));
@@ -60,7 +60,7 @@ TEST(Scheduler, SpendingPastTheBudgetWaitsForRefill)
   auto s = scheduler(80'000);
   s.next(0ms);
   for (int i = 0; i < 3; ++i) {
-    s.push(0, item(0, 1000));
+    s.push(0, item(0, 1000), 0ms);
   }
   EXPECT_TRUE(s.next(50ms));
   EXPECT_FALSE(s.next(60ms));
@@ -72,7 +72,7 @@ TEST(Scheduler, IdleTimeCarriesOverOnlyOneBurst)
   auto s = scheduler(80'000);
   s.next(0ms);
   for (int i = 0; i < 3; ++i) {
-    s.push(0, item(0, 1000));
+    s.push(0, item(0, 1000), 0ms);
   }
   EXPECT_TRUE(s.next(10s));
   EXPECT_FALSE(s.next(10s));
@@ -81,7 +81,7 @@ TEST(Scheduler, IdleTimeCarriesOverOnlyOneBurst)
 TEST(Scheduler, AZeroBudgetSendsNothing)
 {
   auto s = scheduler(0);
-  s.push(1, item(1, 1));
+  s.push(1, item(1, 1), 0ms);
   EXPECT_FALSE(s.next(1ms));
 }
 

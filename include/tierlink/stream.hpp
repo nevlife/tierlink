@@ -1,6 +1,7 @@
 #ifndef TIERLINK__STREAM_HPP_
 #define TIERLINK__STREAM_HPP_
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -19,7 +20,7 @@ enum class Delivery {
   Latest,
   // Every value is kept, in order, up to the capacity.
   Reliable,
-  // Encoded frames; an unsent frame is replaced by a newer one.
+  // Encoded frames; frames that waited longer than max_delay are dropped.
   Frame,
 };
 
@@ -32,6 +33,8 @@ struct StreamSpec
   // keyframe.
   bool inter_frame = false;
   std::size_t capacity = 256;
+  // Frame only. Zero: an unsent frame is replaced by the next one.
+  std::chrono::nanoseconds max_delay{0};
 };
 
 struct Item
@@ -55,18 +58,21 @@ class Outbox
 {
 public:
   explicit Outbox(const StreamSpec & spec);
-  Pushed push(Item item);
+  Pushed push(Item item, std::chrono::nanoseconds now);
   std::optional<Item> pop();
   bool empty() const;
 
 private:
-  Pushed push_inter_frame(Item item);
+  Pushed push_frame(Item item, std::chrono::nanoseconds now);
+  bool front_expired(std::chrono::nanoseconds now) const;
 
   Delivery delivery_;
   bool inter_frame_;
   std::size_t capacity_;
+  std::chrono::nanoseconds max_delay_;
   std::optional<Item> slot_;
   std::deque<Item> queue_;
+  std::deque<std::chrono::nanoseconds> queued_at_;
   bool awaiting_keyframe_ = false;
 };
 
