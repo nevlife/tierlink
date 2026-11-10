@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use tierlink_link::{Delivery, StreamSpec, Tier};
 use tierlink_ratectl::Fixed;
-use tierlink_zenoh::{Receiver, Uplink, UplinkConfig, config};
+use tierlink_zenoh::{Receiver, Tuning, Uplink, UplinkConfig, config};
 use tokio::time::{sleep, timeout};
 
 fn free_port() -> u16 {
@@ -24,15 +24,18 @@ fn stream(name: &str, delivery: Delivery, inter_frame: bool) -> StreamSpec {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn frames_arrive_and_acks_empty_the_flight() {
+async fn frames_arrive_acks_return_and_keyframe_requests_reach_the_encoder() {
     let endpoint = format!("tcp/127.0.0.1:{}", free_port());
-    let server = zenoh::open(config("peer", &[], &[&endpoint]).unwrap())
+    let server = zenoh::open(config("peer", &[], &[&endpoint], None).unwrap())
         .await
         .unwrap();
-    let vehicle = zenoh::open(config("client", &[&endpoint], &[]).unwrap())
+    let vehicle =
+        zenoh::open(config("client", &[&endpoint], &[], Some(Tuning::SHORT_QUEUE)).unwrap())
+            .await
+            .unwrap();
+    let (receiver, mut rx) = Receiver::open(&server, "test/r01", Duration::from_millis(250))
         .await
         .unwrap();
-    let (_receiver, mut rx) = Receiver::open(&server, "test/r01").await.unwrap();
     let uplink = Uplink::open(
         &vehicle,
         UplinkConfig {
@@ -68,4 +71,15 @@ async fn frames_arrive_and_acks_empty_the_flight() {
     let (decision, feedback) = uplink.status();
     assert_eq!(decision.unwrap().target_bps, 10_000_000);
     assert_eq!(feedback.in_flight_bytes, 0);
+
+    assert_eq!(got.lost, 0);
+
+    assert!(!uplink.take_keyframe_request(cam));
+    receiver
+        .request_keyframe(Tier::Teleop, "front_cam")
+        .await
+        .unwrap();
+    sleep(Duration::from_millis(200)).await;
+    assert!(uplink.take_keyframe_request(cam));
+    assert!(!uplink.take_keyframe_request(cam));
 }

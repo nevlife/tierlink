@@ -28,6 +28,8 @@ struct State {
     cap_bps: Option<u64>,
     decision: Option<Decision>,
     next_seq: u64,
+    stream_seq: Vec<u64>,
+    keyframe_requested: Vec<bool>,
 }
 
 /// One tier's sending side: its streams, its controller and its own session.
@@ -35,6 +37,7 @@ pub struct Uplink {
     state: Arc<Mutex<State>>,
     task: JoinHandle<()>,
     _acks: Subscriber<()>,
+    _keyframe_requests: Subscriber<()>,
 }
 
 fn lock(state: &Mutex<State>) -> MutexGuard<'_, State> {
@@ -54,6 +57,7 @@ impl Uplink {
         for s in &cfg.streams {
             publishers.push(declare(session, &base, s).await?);
         }
+        let n = cfg.streams.len();
         let state = Arc::new(Mutex::new(State {
             scheduler: Scheduler::new(cfg.streams, 0, cfg.burst),
             tracker: DelayTracker::new(cfg.delay_window),
@@ -61,6 +65,8 @@ impl Uplink {
             cap_bps: None,
             decision: None,
             next_seq: 0,
+            stream_seq: vec![0; n],
+            keyframe_requested: vec![false; n],
         }));
         let acked = Arc::clone(&state);
         let acks = session
@@ -71,11 +77,26 @@ impl Uplink {
                 }
             })
             .await?;
+        let requested = Arc::clone(&state);
+        let keyframe_requests = session
+            .declare_subscriber(format!("{base}/keyframe"))
+            .callback(move |sample| {
+                let name = sample.payload().to_bytes();
+                let mut s = lock(&requested);
+                let id = std::str::from_utf8(&name)
+                    .ok()
+                    .and_then(|n| s.scheduler.id(n));
+                if let Some(id) = id {
+                    s.keyframe_requested[id] = true;
+                }
+            })
+            .await?;
         let task = tokio::spawn(send_loop(Arc::clone(&state), publishers, cfg.tick));
         Ok(Self {
             state,
             task,
             _acks: acks,
+            _keyframe_requests: keyframe_requests,
         })
     }
 
@@ -84,9 +105,18 @@ impl Uplink {
     }
 
     pub fn push(&self, id: usize, payload: Vec<u8>, keyframe: bool) -> Pushed {
-        lock(&self.state)
-            .scheduler
-            .push(id, Item { payload, keyframe })
+        let mut s = lock(&self.state);
+        let pushed = s.scheduler.push(id, Item { payload, keyframe });
+        if pushed == Pushed::KeyframeNeeded {
+            s.keyframe_requested[id] = true;
+        }
+        pushed
+    }
+
+    /// True once after this stream dropped a frame or the receiver asked for a keyframe; the
+    /// encoder checks it before each frame.
+    pub fn take_keyframe_request(&self, id: usize) -> bool {
+        std::mem::take(&mut lock(&self.state).keyframe_requested[id])
     }
 
     /// An upper bound from outside, such as the allowance the teleop process publishes.
@@ -155,9 +185,12 @@ async fn send_loop(state: Arc<Mutex<State>>, publishers: Vec<Publisher<'static>>
                 };
                 let seq = s.next_seq;
                 s.next_seq += 1;
+                let stream_seq = s.stream_seq[id];
+                s.stream_seq[id] += 1;
                 s.tracker.on_sent(seq, item.payload.len() as u64, now);
                 let header = Header {
                     seq,
+                    stream_seq,
                     sent_ns: now.0,
                     keyframe: item.keyframe,
                 };
