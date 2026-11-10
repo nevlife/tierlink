@@ -1,0 +1,10 @@
+[package]
+name = "tierlink_ratectl"
+description = "Decides how many bits per second the link can take now"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
