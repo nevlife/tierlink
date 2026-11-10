@@ -39,6 +39,9 @@ std::vector<std::uint8_t> encode_ack(std::uint64_t seq, std::int64_t received_ns
 std::optional<std::pair<std::uint64_t, std::int64_t>> decode_ack(
   const std::vector<std::uint8_t> & bytes);
 
+std::vector<std::uint8_t> encode_bps(std::uint64_t bps);
+std::optional<std::uint64_t> decode_bps(const std::vector<std::uint8_t> & bytes);
+
 struct Arrival
 {
   // Items published but never received before this one.

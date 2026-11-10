@@ -57,14 +57,16 @@ struct TierPolicy
     const Decision & link, std::uint64_t teleop_bps, const Feedback & feedback) const;
 };
 
-// The monitoring process's view of the last published allowance. Teleop that stops publishing is
-// treated as inactive, so monitoring falls back to its own controller.
+inline constexpr const char * kAllowanceName = "allowance";
+
+// The last published allowance; once it expires, monitoring runs on its own controller.
 class Allowance
 {
 public:
   explicit Allowance(Nanos expires_after) : expires_after_(expires_after) {}
   void update(std::uint64_t bps, Nanos now) { latest_ = std::make_pair(now, bps); }
-  std::uint64_t effective(const Decision & own, Nanos now) const;
+  // The cap for the monitoring Uplink (set_cap), or nothing once the allowance expired.
+  std::optional<std::uint64_t> cap(Nanos now) const;
 
 private:
   Nanos expires_after_;

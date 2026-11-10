@@ -14,6 +14,8 @@ TEST(Wire, HeaderAndAckRoundTrip)
   EXPECT_EQ(Header::decode(h.encode()), h);
   EXPECT_EQ(tierlink::decode_ack(tierlink::encode_ack(9, 123)), std::make_pair(9ul, 123l));
   EXPECT_FALSE(Header::decode({0, 0, 0}));
+  EXPECT_EQ(tierlink::decode_bps(tierlink::encode_bps(1'234'567)), 1'234'567u);
+  EXPECT_FALSE(tierlink::decode_bps({1, 2}));
 }
 
 TEST(GapTracker, InOrderArrivalsRequestNothing)

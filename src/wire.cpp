@@ -63,6 +63,21 @@ std::optional<std::pair<std::uint64_t, std::int64_t>> decode_ack(
   return std::make_pair(get_u64(bytes, 0), static_cast<std::int64_t>(get_u64(bytes, 8)));
 }
 
+std::vector<std::uint8_t> encode_bps(std::uint64_t bps)
+{
+  std::vector<std::uint8_t> out;
+  put_u64(out, bps);
+  return out;
+}
+
+std::optional<std::uint64_t> decode_bps(const std::vector<std::uint8_t> & bytes)
+{
+  if (bytes.size() != 8) {
+    return std::nullopt;
+  }
+  return get_u64(bytes, 0);
+}
+
 Arrival GapTracker::on_arrival(std::uint64_t stream_seq, bool keyframe, Nanos now)
 {
   const std::uint64_t lost = next_ && stream_seq > *next_ ? stream_seq - *next_ : 0;

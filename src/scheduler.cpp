@@ -63,12 +63,12 @@ std::uint64_t TierPolicy::monitor_allowance(
   return std::min(share, left);
 }
 
-std::uint64_t Allowance::effective(const Decision & own, Nanos now) const
+std::optional<std::uint64_t> Allowance::cap(Nanos now) const
 {
   if (latest_ && now - latest_->first <= expires_after_) {
-    return std::min(latest_->second, own.target_bps);
+    return latest_->second;
   }
-  return own.target_bps;
+  return std::nullopt;
 }
 
 }  // namespace tierlink

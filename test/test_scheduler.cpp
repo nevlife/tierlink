@@ -96,9 +96,8 @@ TEST(TierPolicy, MonitoringGetsAShareOfWhatTeleopLeaves)
 TEST(Allowance, AnExpiredAllowanceFallsBackToTheOwnController)
 {
   tierlink::Allowance a(500ms);
-  const auto own = link(800'000);
-  EXPECT_EQ(a.effective(own, 0ms), 800'000u);
+  EXPECT_FALSE(a.cap(0ms));
   a.update(100'000, 0ms);
-  EXPECT_EQ(a.effective(own, 400ms), 100'000u);
-  EXPECT_EQ(a.effective(own, 600ms), 800'000u);
+  EXPECT_EQ(a.cap(400ms), 100'000u);
+  EXPECT_FALSE(a.cap(600ms));
 }
