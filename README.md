@@ -7,6 +7,15 @@ left and is thinned or delayed first when the queue grows.
 | Crate | Role |
 | --- | --- |
 | `crates/ratectl` | How many bits per second the link can take now: delay tracking from acknowledgements, `RateController` with `Fixed` and `Aimd` |
+| `crates/link` | Stream declarations (tier, delivery), pending-data rules per delivery, the tier scheduler, and the monitoring allowance that the teleop process publishes |
+
+Delivery is one of three:
+
+| Delivery | Rule |
+| --- | --- |
+| `latest` | Only the newest value is kept |
+| `reliable` | Values are kept in order up to a capacity; the oldest is dropped when full |
+| `frame` | An unsent frame is replaced by a newer one. For inter-frame codecs the replaced frame breaks decoding, so frames are discarded until a keyframe and the encoder is asked for one |
 
 ## Build and test
 

@@ -1,0 +1,14 @@
+[package]
+name = "tierlink_link"
+description = "Stream declarations, delivery rules and the tier scheduler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tierlink_ratectl = { path = "../ratectl" }
+
+[lints]
+workspace = true
