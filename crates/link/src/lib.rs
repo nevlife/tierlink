@@ -5,7 +5,7 @@ mod policy;
 mod scheduler;
 mod spec;
 
-pub use outbox::{Outbox, Pushed};
+pub use outbox::{Item, Outbox, Pushed};
 pub use policy::{Allowance, TierPolicy};
 pub use scheduler::Scheduler;
 pub use spec::{Delivery, StreamSpec, Tier};

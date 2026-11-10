@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use tierlink_ratectl::SteadyNs;
 
-use crate::{Outbox, Pushed, StreamSpec};
+use crate::{Item, Outbox, Pushed, StreamSpec};
 
 /// Sends pending data within a bit budget: teleop streams before monitor streams, and within a
 /// tier in declaration order.
@@ -50,8 +50,8 @@ impl Scheduler {
         self.budget_bps = bps;
     }
 
-    pub fn push(&mut self, id: usize, payload: Vec<u8>, keyframe: bool) -> Pushed {
-        self.streams[id].1.push(payload, keyframe)
+    pub fn push(&mut self, id: usize, item: Item) -> Pushed {
+        self.streams[id].1.push(item)
     }
 
     /// The next payload to send, or `None` when nothing is pending or the budget is spent. A
@@ -61,7 +61,7 @@ impl Scheduler {
         clippy::cast_precision_loss,
         reason = "bit counts and rates are far below 2^52"
     )]
-    pub fn next(&mut self, now: SteadyNs) -> Option<(usize, Vec<u8>)> {
+    pub fn next(&mut self, now: SteadyNs) -> Option<(usize, Item)> {
         let rate = self.budget_bps as f64;
         let elapsed = self.last_refill.map_or(0.0, |t| now.since(t).as_secs_f64());
         self.last_refill = Some(now);
@@ -72,10 +72,10 @@ impl Scheduler {
         let id = *self
             .order
             .iter()
-            .find(|&&i| self.streams[i].1.peek_len().is_some())?;
-        let payload = self.streams[id].1.pop()?;
-        self.tokens_bits -= (payload.len() * 8) as f64;
-        Some((id, payload))
+            .find(|&&i| !self.streams[i].1.is_empty())?;
+        let item = self.streams[id].1.pop()?;
+        self.tokens_bits -= (item.payload.len() * 8) as f64;
+        Some((id, item))
     }
 }
 
@@ -96,6 +96,13 @@ mod tests {
         }
     }
 
+    fn item(byte: u8, len: usize) -> Item {
+        Item {
+            payload: vec![byte; len],
+            keyframe: false,
+        }
+    }
+
     fn scheduler(bps: u64) -> Scheduler {
         Scheduler::new(
             vec![spec("odom", Tier::Monitor), spec("video", Tier::Teleop)],
@@ -108,8 +115,8 @@ mod tests {
     fn teleop_goes_before_monitor() {
         let mut s = scheduler(1_000_000);
         s.next(SteadyNs(0));
-        s.push(0, vec![0; 10], false);
-        s.push(1, vec![1; 10], false);
+        s.push(0, item(0, 10));
+        s.push(1, item(1, 10));
         let at = SteadyNs(10 * MS);
         assert_eq!(s.next(at).map(|(id, _)| id), Some(1));
         assert_eq!(s.next(at).map(|(id, _)| id), Some(0));
@@ -122,7 +129,7 @@ mod tests {
         let mut s = scheduler(80_000);
         s.next(SteadyNs(0));
         for _ in 0..3 {
-            s.push(0, vec![0; 1000], false);
+            s.push(0, item(0, 1000));
         }
         assert!(s.next(SteadyNs(50 * MS)).is_some());
         assert!(s.next(SteadyNs(60 * MS)).is_none());
@@ -134,7 +141,7 @@ mod tests {
         let mut s = scheduler(80_000);
         s.next(SteadyNs(0));
         for _ in 0..3 {
-            s.push(0, vec![0; 1000], false);
+            s.push(0, item(0, 1000));
         }
         let later = SteadyNs(10_000 * MS);
         assert!(s.next(later).is_some());
@@ -144,7 +151,7 @@ mod tests {
     #[test]
     fn a_zero_budget_sends_nothing() {
         let mut s = scheduler(0);
-        s.push(1, vec![1], false);
+        s.push(1, item(1, 1));
         assert!(s.next(SteadyNs(MS)).is_none());
     }
 }

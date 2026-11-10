@@ -1,0 +1,16 @@
+[package]
+name = "tierlink_zenoh"
+description = "Sends tierlink streams over Zenoh and returns acknowledgements"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+tierlink_link = { path = "../link" }
+tierlink_ratectl = { path = "../ratectl" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+zenoh = { version = "=1.10.2", default-features = false, features = ["transport_tcp", "transport_tls"] }
+
+[lints]
+workspace = true
