@@ -50,6 +50,11 @@ std::string last_segment(const zenoh::KeyExpr & key)
 
 }  // namespace
 
+std::string alive_key(const std::string & prefix, const std::string & name)
+{
+  return prefix + "/alive/" + name;
+}
+
 zenoh::Config make_config(
   const std::string & mode, const std::vector<std::string> & connect,
   const std::vector<std::string> & listen, std::optional<Tuning> tuning)
@@ -60,6 +65,10 @@ zenoh::Config make_config(
   c.insert_json5("listen/endpoints", json_list(listen));
   c.insert_json5("scouting/multicast/enabled", "false");
   c.insert_json5("scouting/gossip/enabled", "false");
+  // A link that went silent (an LTE drop, not a closed socket) is declared lost after one lease,
+  // so liveliness tokens show who is gone within a second instead of the default ten.
+  c.insert_json5("transport/link/tx/lease", std::to_string(kLeaseMs));
+  c.insert_json5("transport/link/tx/keep_alive", "4");
   if (tuning) {
     c.insert_json5("transport/link/tx/batch_size", std::to_string(tuning->batch_size));
     for (const char * p :

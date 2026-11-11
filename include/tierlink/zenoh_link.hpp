@@ -36,8 +36,14 @@ struct Tuning
   std::uint8_t queue_batches;
 };
 
+// Link lease in milliseconds; keep-alives go out at a quarter of it.
+inline constexpr int kLeaseMs = 1000;
+
 // Starting values until measured on a narrow link.
 inline constexpr Tuning kShortQueue{16384, 1};
+
+// Liveliness token of one process: <prefix>/alive/<name>, gone when its link is.
+std::string alive_key(const std::string & prefix, const std::string & name);
 
 // Talks only to the given endpoints: no scouting, so a local ROS Zenoh router on the vehicle is
 // never joined and ROS traffic cannot leak onto the link.
