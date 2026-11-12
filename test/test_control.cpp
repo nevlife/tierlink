@@ -78,3 +78,18 @@ TEST(Control, MessagesReachTheOtherClientThroughTheRouterAndEpochsGrow)
   EXPECT_EQ(a->session_id.size(), 32u);
   EXPECT_FALSE(tierlink::request_epoch(operator_side, "test/none", 300));
 }
+
+TEST(Control, EachClientTimesItsHopToTheServer)
+{
+  const std::string endpoint = "tcp/127.0.0.1:" + std::to_string(free_port());
+  auto router = zenoh::Session::open(tierlink::make_config("router", {}, {endpoint}, std::nullopt));
+  auto vehicle =
+    zenoh::Session::open(tierlink::make_config("client", {endpoint}, {}, std::nullopt));
+  tierlink::PingResponder responder(router, "test/r01");
+
+  const auto rtt = tierlink::ping_server(vehicle, "test/r01", 2000);
+  ASSERT_TRUE(rtt);
+  EXPECT_GT(rtt->count(), 0);
+  EXPECT_LT(*rtt, std::chrono::seconds(1));
+  EXPECT_FALSE(tierlink::ping_server(vehicle, "test/none", 300));
+}

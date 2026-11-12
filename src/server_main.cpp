@@ -12,7 +12,7 @@
 #include <vector>
 
 // The server: a Zenoh router for vehicles and operators, the receiver of both tiers, and the
-// issuer of teleop session epochs. Prints per-stream counts every second and can write a
+// answer to <prefix>/server/ping. Prints per-stream counts every second and can write a
 // stream's payloads to a file (an H.265 stream is then playable as is).
 //
 // tierlink_server --listen tcp/0.0.0.0:7447 --prefix scv/r01 [--dump front_cam=/tmp/front.h265]
@@ -75,7 +75,7 @@ int main(int argc, char ** argv)
   for (const auto & [stream, path] : args.dumps) {
     files.emplace(stream, std::ofstream(path, std::ios::binary));
   }
-  tierlink::EpochIssuer issuer(session, args.prefix);
+  tierlink::PingResponder ping(session, args.prefix);
   tierlink::Receiver receiver(
     session, args.prefix, std::chrono::milliseconds(250), [&](tierlink::Received r) {
       std::lock_guard<std::mutex> lock(mutex);

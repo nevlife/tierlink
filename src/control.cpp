@@ -115,4 +115,30 @@ std::optional<SessionGrant> request_epoch(
   return std::nullopt;
 }
 
+PingResponder::PingResponder(const zenoh::Session & session, const std::string & prefix)
+{
+  const std::string key = prefix + "/server/ping";
+  queryable_.emplace(session.declare_queryable(
+    zenoh::KeyExpr(key),
+    [key](const zenoh::Query & query) { query.reply(zenoh::KeyExpr(key), zenoh::Bytes("")); },
+    zenoh::closures::none));
+}
+
+std::optional<std::chrono::nanoseconds> ping_server(
+  const zenoh::Session & session, const std::string & prefix, std::uint64_t timeout_ms)
+{
+  auto options = zenoh::Session::GetOptions::create_default();
+  options.timeout_ms = timeout_ms;
+  const auto start = std::chrono::steady_clock::now();
+  auto replies = session.get(
+    zenoh::KeyExpr(prefix + "/server/ping"), "", zenoh::channels::FifoChannel(4),
+    std::move(options));
+  for (auto r = replies.recv(); std::holds_alternative<zenoh::Reply>(r); r = replies.recv()) {
+    if (std::get<zenoh::Reply>(r).is_ok()) {
+      return std::chrono::steady_clock::now() - start;
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace tierlink

@@ -4,6 +4,7 @@
 #include "tierlink/stream.hpp"
 #include "zenoh.hxx"
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -58,7 +59,8 @@ private:
   std::uint64_t last_ = 0;
 };
 
-// The server's single source of session epochs for <prefix>/teleop/session.
+// The single source of session epochs for <prefix>/teleop/session: the vehicle, whose guard
+// checks them.
 class EpochIssuer
 {
 public:
@@ -72,6 +74,21 @@ private:
 
 // Asks the issuer for a new session; nothing when no issuer answers within the timeout.
 std::optional<SessionGrant> request_epoch(
+  const zenoh::Session & session, const std::string & prefix, std::uint64_t timeout_ms);
+
+// The server answers <prefix>/server/ping, so each peer can time its own hop to the server; the
+// one-way delay of a path through the server is then split by hop.
+class PingResponder
+{
+public:
+  PingResponder(const zenoh::Session & session, const std::string & prefix);
+
+private:
+  std::optional<zenoh::Queryable<void>> queryable_;
+};
+
+// Round trip to the server, or nullopt when no reply came within timeout_ms. Blocks.
+std::optional<std::chrono::nanoseconds> ping_server(
   const zenoh::Session & session, const std::string & prefix, std::uint64_t timeout_ms);
 
 }  // namespace tierlink
