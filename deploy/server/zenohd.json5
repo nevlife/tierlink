@@ -1,0 +1,22 @@
+// The server's router. Endpoints are given on the command line (docker-compose.yml).
+{
+  mode: "router",
+  scouting: { multicast: { enabled: false }, gossip: { enabled: false } },
+  transport: {
+    unicast: {
+      // A vehicle's router opens one TCP and one UDP link; reliable traffic takes TCP and
+      // best-effort traffic (video) takes UDP.
+      max_links: 4,
+    },
+    link: {
+      tx: {
+        // As tierlink's make_config: a silent link counts as lost after one second.
+        lease: 1000,
+        keep_alive: 4,
+        // One UDP datagram per packet: an IP-fragmented datagram is lost with any fragment,
+        // which lost 2 to 5% of 8 kB frames on a clean path instead of about 1%.
+        batch_size: 1400,
+      },
+    },
+  },
+}

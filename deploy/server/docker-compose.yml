@@ -1,0 +1,24 @@
+# The server: the Zenoh router that vehicles and operators connect to, and fleetd behind it.
+# Ports and paths come from .env (see env.example); docker compose up -d --build
+services:
+  zenohd:
+    image: eclipse/zenoh:1.10.1
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./zenohd.json5:/etc/zenohd.json5:ro
+    command:
+      - --config=/etc/zenohd.json5
+      - --listen=tcp/0.0.0.0:${TCP_PORT}
+      - --listen=udp/0.0.0.0:${UDP_PORT}
+      # fleetd's own link, kept off the public ports.
+      - --listen=tcp/127.0.0.1:${LOCAL_PORT}
+  fleetd:
+    build: ../../server
+    network_mode: host
+    restart: unless-stopped
+    depends_on: [zenohd]
+    stop_grace_period: 10s
+    volumes:
+      - ${FLEETD_CONFIG}:/etc/fleetd/fleetd.yaml:ro
+      - ${DATA_DIR}:/data

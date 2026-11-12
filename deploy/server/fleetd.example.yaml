@@ -1,0 +1,8 @@
+# fleetd's link to the router (its LOCAL_PORT), where it stores, and the vehicles it serves.
+connect: [tcp/127.0.0.1:7448]
+data_dir: /data
+# Kept in memory for <prefix>/history queries; everything is also in the hourly MCAP files.
+history_seconds: 600
+vehicles:
+  - { id: r01, prefix: scv/r01, model: hunter }
+  - { id: r02, prefix: scv/r02, model: scout_mini }
