@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <chrono>
 #include <random>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace tierlink
 {

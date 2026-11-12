@@ -1,6 +1,11 @@
 #include "tierlink/zenoh_link.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace tierlink
 {
@@ -243,10 +248,9 @@ Receiver::Receiver(
           state->keyframe_requests.put(
             zenoh::Bytes(std::vector<std::uint8_t>(stream.begin(), stream.end())));
         }
-        on_received(
-          Received{
-            tier, std::move(stream), header->seq, header->keyframe, arrival.lost,
-            sample.get_payload().as_vector()});
+        on_received(Received{
+          tier, std::move(stream), header->seq, header->keyframe, arrival.lost,
+          sample.get_payload().as_vector()});
       },
       zenoh::closures::none));
   }

@@ -3,8 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <utility>
 
-using namespace std::chrono_literals;
 using tierlink::GapTracker;
 using tierlink::Header;
 
@@ -20,22 +20,22 @@ TEST(Wire, HeaderAndAckRoundTrip)
 
 TEST(GapTracker, InOrderArrivalsRequestNothing)
 {
-  GapTracker g(250ms);
-  EXPECT_EQ(g.on_arrival(0, true, 0ms).lost, 0u);
-  const auto a = g.on_arrival(1, false, 33ms);
+  GapTracker g(std::chrono::milliseconds(250));
+  EXPECT_EQ(g.on_arrival(0, true, std::chrono::milliseconds(0)).lost, 0u);
+  const auto a = g.on_arrival(1, false, std::chrono::milliseconds(33));
   EXPECT_FALSE(a.request_keyframe);
   EXPECT_EQ(a.lost, 0u);
 }
 
 TEST(GapTracker, AGapRequestsUntilAKeyframeArrives)
 {
-  GapTracker g(250ms);
-  g.on_arrival(0, true, 0ms);
-  const auto a = g.on_arrival(3, false, 100ms);
+  GapTracker g(std::chrono::milliseconds(250));
+  g.on_arrival(0, true, std::chrono::milliseconds(0));
+  const auto a = g.on_arrival(3, false, std::chrono::milliseconds(100));
   EXPECT_EQ(a.lost, 2u);
   EXPECT_TRUE(a.request_keyframe);
-  EXPECT_FALSE(g.on_arrival(4, false, 200ms).request_keyframe);
-  EXPECT_TRUE(g.on_arrival(5, false, 350ms).request_keyframe);
-  EXPECT_FALSE(g.on_arrival(6, true, 400ms).request_keyframe);
-  EXPECT_FALSE(g.on_arrival(7, false, 800ms).request_keyframe);
+  EXPECT_FALSE(g.on_arrival(4, false, std::chrono::milliseconds(200)).request_keyframe);
+  EXPECT_TRUE(g.on_arrival(5, false, std::chrono::milliseconds(350)).request_keyframe);
+  EXPECT_FALSE(g.on_arrival(6, true, std::chrono::milliseconds(400)).request_keyframe);
+  EXPECT_FALSE(g.on_arrival(7, false, std::chrono::milliseconds(800)).request_keyframe);
 }

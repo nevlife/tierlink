@@ -13,7 +13,6 @@
 #include <thread>
 #include <vector>
 
-using namespace std::chrono_literals;
 using tierlink::Tier;
 
 namespace
@@ -63,11 +62,11 @@ TEST(Control, MessagesReachTheOtherClientThroughTheRouterAndEpochsGrow)
       cv.notify_one();
     });
   tierlink::ControlPublisher pub(operator_side, "test/r01", Tier::Teleop, "motion");
-  std::this_thread::sleep_for(500ms);
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
   pub.send({1, 2, 3});
   std::unique_lock<std::mutex> lock(mutex);
-  ASSERT_TRUE(cv.wait_for(lock, 5s, [&] { return !got.empty(); }));
+  ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&] { return !got.empty(); }));
   EXPECT_EQ(got[0], (std::vector<std::uint8_t>{1, 2, 3}));
   lock.unlock();
 

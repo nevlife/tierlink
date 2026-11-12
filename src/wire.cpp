@@ -1,5 +1,8 @@
 #include "tierlink/wire.hpp"
 
+#include <utility>
+#include <vector>
+
 namespace tierlink
 {
 

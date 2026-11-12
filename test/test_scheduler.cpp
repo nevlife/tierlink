@@ -5,7 +5,6 @@
 #include <chrono>
 #include <vector>
 
-using namespace std::chrono_literals;
 using tierlink::Decision;
 using tierlink::Feedback;
 using tierlink::Item;
@@ -23,7 +22,9 @@ tierlink::StreamSpec spec(const char * name, Tier tier)
 
 Scheduler scheduler(std::uint64_t bps)
 {
-  return Scheduler({spec("odom", Tier::Monitor), spec("video", Tier::Teleop)}, bps, 100ms);
+  return Scheduler(
+    {spec("odom", Tier::Monitor), spec("video", Tier::Teleop)}, bps,
+    std::chrono::milliseconds(100));
 }
 
 Item item(std::uint8_t byte, std::size_t len)
@@ -46,58 +47,60 @@ Feedback delay(Nanos d)
 TEST(Scheduler, TeleopGoesBeforeMonitor)
 {
   auto s = scheduler(1'000'000);
-  s.next(0ms);
-  s.push(0, item(0, 10), 0ms);
-  s.push(1, item(1, 10), 0ms);
-  EXPECT_EQ(s.next(10ms)->first, 1u);
-  EXPECT_EQ(s.next(10ms)->first, 0u);
-  EXPECT_FALSE(s.next(10ms));
+  s.next(std::chrono::milliseconds(0));
+  s.push(0, item(0, 10), std::chrono::milliseconds(0));
+  s.push(1, item(1, 10), std::chrono::milliseconds(0));
+  EXPECT_EQ(s.next(std::chrono::milliseconds(10))->first, 1u);
+  EXPECT_EQ(s.next(std::chrono::milliseconds(10))->first, 0u);
+  EXPECT_FALSE(s.next(std::chrono::milliseconds(10)));
 }
 
 TEST(Scheduler, SpendingPastTheBudgetWaitsForRefill)
 {
   // 80 kbit/s: one 1000-byte item costs 100 ms of budget.
   auto s = scheduler(80'000);
-  s.next(0ms);
+  s.next(std::chrono::milliseconds(0));
   for (int i = 0; i < 3; ++i) {
-    s.push(0, item(0, 1000), 0ms);
+    s.push(0, item(0, 1000), std::chrono::milliseconds(0));
   }
-  EXPECT_TRUE(s.next(50ms));
-  EXPECT_FALSE(s.next(60ms));
-  EXPECT_TRUE(s.next(150ms));
+  EXPECT_TRUE(s.next(std::chrono::milliseconds(50)));
+  EXPECT_FALSE(s.next(std::chrono::milliseconds(60)));
+  EXPECT_TRUE(s.next(std::chrono::milliseconds(150)));
 }
 
 TEST(Scheduler, IdleTimeCarriesOverOnlyOneBurst)
 {
   auto s = scheduler(80'000);
-  s.next(0ms);
+  s.next(std::chrono::milliseconds(0));
   for (int i = 0; i < 3; ++i) {
-    s.push(0, item(0, 1000), 0ms);
+    s.push(0, item(0, 1000), std::chrono::milliseconds(0));
   }
-  EXPECT_TRUE(s.next(10s));
-  EXPECT_FALSE(s.next(10s));
+  EXPECT_TRUE(s.next(std::chrono::seconds(10)));
+  EXPECT_FALSE(s.next(std::chrono::seconds(10)));
 }
 
 TEST(Scheduler, AZeroBudgetSendsNothing)
 {
   auto s = scheduler(0);
-  s.push(1, item(1, 1), 0ms);
-  EXPECT_FALSE(s.next(1ms));
+  s.push(1, item(1, 1), std::chrono::milliseconds(0));
+  EXPECT_FALSE(s.next(std::chrono::milliseconds(1)));
 }
 
 TEST(TierPolicy, MonitoringGetsAShareOfWhatTeleopLeaves)
 {
-  const tierlink::TierPolicy p{0.1, 50ms};
-  EXPECT_EQ(p.monitor_allowance(link(1'000'000), 500'000, delay(0ms)), 100'000u);
-  EXPECT_EQ(p.monitor_allowance(link(1'000'000), 950'000, delay(0ms)), 50'000u);
-  EXPECT_EQ(p.monitor_allowance(link(1'000'000), 0, delay(80ms)), 0u);
+  const tierlink::TierPolicy p{0.1, std::chrono::milliseconds(50)};
+  EXPECT_EQ(
+    p.monitor_allowance(link(1'000'000), 500'000, delay(std::chrono::milliseconds(0))), 100'000u);
+  EXPECT_EQ(
+    p.monitor_allowance(link(1'000'000), 950'000, delay(std::chrono::milliseconds(0))), 50'000u);
+  EXPECT_EQ(p.monitor_allowance(link(1'000'000), 0, delay(std::chrono::milliseconds(80))), 0u);
 }
 
 TEST(Allowance, AnExpiredAllowanceFallsBackToTheOwnController)
 {
-  tierlink::Allowance a(500ms);
-  EXPECT_FALSE(a.cap(0ms));
-  a.update(100'000, 0ms);
-  EXPECT_EQ(a.cap(400ms), 100'000u);
-  EXPECT_FALSE(a.cap(600ms));
+  tierlink::Allowance a(std::chrono::milliseconds(500));
+  EXPECT_FALSE(a.cap(std::chrono::milliseconds(0)));
+  a.update(100'000, std::chrono::milliseconds(0));
+  EXPECT_EQ(a.cap(std::chrono::milliseconds(400)), 100'000u);
+  EXPECT_FALSE(a.cap(std::chrono::milliseconds(600)));
 }

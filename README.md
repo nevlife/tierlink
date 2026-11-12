@@ -7,23 +7,23 @@ left and is thinned or delayed first when the queue grows.
 A C++ library in an `ament_cmake` package. It depends on Zenoh (`zenoh_cpp_vendor`) and not on
 `rclcpp`, so nodes and plain programs link it alike.
 
-| Header | Role |
-| --- | --- |
-| `tierlink/rate_controller.hpp` | `RateController` with `Fixed` and `Aimd`: how many bits per second the link can take now |
-| `tierlink/delay_tracker.hpp` | Queue delay, stall and bytes in flight from sent items and acknowledgements |
-| `tierlink/stream.hpp` | Stream declaration (tier, delivery) and the pending-data rule per delivery |
-| `tierlink/scheduler.hpp` | The tier scheduler, and the monitoring allowance that the teleop process publishes |
-| `tierlink/wire.hpp` | The data header, acknowledgements, and gap tracking on the receiver |
-| `tierlink/zenoh_link.hpp` | `Uplink` sends one tier's streams over its own session; `Receiver` delivers both tiers on the server |
-| `tierlink/control.hpp` | Small control messages in either direction, and the server's session epochs |
+| Header                         | Role                                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `tierlink/rate_controller.hpp` | `RateController` with `Fixed` and `Aimd`: how many bits per second the link can take now             |
+| `tierlink/delay_tracker.hpp`   | Queue delay, stall and bytes in flight from sent items and acknowledgements                          |
+| `tierlink/stream.hpp`          | Stream declaration (tier, delivery) and the pending-data rule per delivery                           |
+| `tierlink/scheduler.hpp`       | The tier scheduler, and the monitoring allowance that the teleop process publishes                   |
+| `tierlink/wire.hpp`            | The data header, acknowledgements, and gap tracking on the receiver                                  |
+| `tierlink/zenoh_link.hpp`      | `Uplink` sends one tier's streams over its own session; `Receiver` delivers both tiers on the server |
+| `tierlink/control.hpp`         | Small control messages in either direction, and the server's session epochs                          |
 
 Delivery is one of three:
 
-| Delivery | Rule |
-| --- | --- |
-| `Latest` | Only the newest value is kept |
-| `Reliable` | Values are kept in order up to a capacity; the oldest is dropped when full |
-| `Frame` | Frames wait up to `max_delay`, then are dropped. For inter-frame codecs a drop breaks decoding, so frames are discarded until a keyframe and the encoder is asked for one; a keyframe also clears the frames queued before it |
+| Delivery   | Rule                                                                                                                                                                                                                          |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Latest`   | Only the newest value is kept                                                                                                                                                                                                 |
+| `Reliable` | Values are kept in order up to a capacity; the oldest is dropped when full                                                                                                                                                    |
+| `Frame`    | Frames wait up to `max_delay`, then are dropped. For inter-frame codecs a drop breaks decoding, so frames are discarded until a keyframe and the encoder is asked for one; a keyframe also clears the frames queued before it |
 
 Each tier has its own Zenoh session, so its own TCP connection. Keys are
 `<prefix>/<tier>/data/<stream>`, `<prefix>/<tier>/ack` and `<prefix>/<tier>/keyframe`. The

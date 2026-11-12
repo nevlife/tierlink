@@ -4,7 +4,6 @@
 
 #include <chrono>
 
-using namespace std::chrono_literals;
 using tierlink::DelayTracker;
 using tierlink::Nanos;
 
@@ -22,44 +21,44 @@ constexpr std::int64_t ms(std::int64_t v)
 
 TEST(DelayTracker, QueueDelayIsOneWayDelayAboveItsMinimum)
 {
-  DelayTracker t(10s);
-  t.on_sent(0, 1000, 0ms);
-  t.on_ack(0, kOffset + ms(20), 40ms);
-  EXPECT_EQ(t.feedback(40ms).queue_delay, Nanos{0});
-  t.on_sent(1, 1000, 100ms);
-  t.on_ack(1, kOffset + ms(170), 190ms);
-  EXPECT_EQ(t.feedback(190ms).queue_delay, 50ms);
+  DelayTracker t(std::chrono::seconds(10));
+  t.on_sent(0, 1000, std::chrono::milliseconds(0));
+  t.on_ack(0, kOffset + ms(20), std::chrono::milliseconds(40));
+  EXPECT_EQ(t.feedback(std::chrono::milliseconds(40)).queue_delay, Nanos{0});
+  t.on_sent(1, 1000, std::chrono::milliseconds(100));
+  t.on_ack(1, kOffset + ms(170), std::chrono::milliseconds(190));
+  EXPECT_EQ(t.feedback(std::chrono::milliseconds(190)).queue_delay, std::chrono::milliseconds(50));
 }
 
 TEST(DelayTracker, AnAckCoversEarlierItems)
 {
-  DelayTracker t(10s);
+  DelayTracker t(std::chrono::seconds(10));
   for (int id = 0; id < 3; ++id) {
-    t.on_sent(id, 500, id * 1ms);
+    t.on_sent(id, 500, id * std::chrono::milliseconds(1));
   }
-  EXPECT_EQ(t.feedback(3ms).in_flight_bytes, 1500u);
-  t.on_ack(1, kOffset + ms(30), 40ms);
-  EXPECT_EQ(t.feedback(40ms).in_flight_bytes, 500u);
+  EXPECT_EQ(t.feedback(std::chrono::milliseconds(3)).in_flight_bytes, 1500u);
+  t.on_ack(1, kOffset + ms(30), std::chrono::milliseconds(40));
+  EXPECT_EQ(t.feedback(std::chrono::milliseconds(40)).in_flight_bytes, 500u);
 }
 
 TEST(DelayTracker, StallGrowsWhileAcksStop)
 {
-  DelayTracker t(10s);
-  t.on_sent(0, 1000, 0ms);
-  t.on_ack(0, kOffset + ms(20), 40ms);
-  t.on_sent(1, 1000, 100ms);
-  EXPECT_EQ(t.feedback(140ms).stall, Nanos{0});
-  EXPECT_EQ(t.feedback(640ms).stall, 500ms);
-  t.on_ack(1, kOffset + ms(640), 660ms);
-  EXPECT_EQ(t.feedback(660ms).stall, Nanos{0});
+  DelayTracker t(std::chrono::seconds(10));
+  t.on_sent(0, 1000, std::chrono::milliseconds(0));
+  t.on_ack(0, kOffset + ms(20), std::chrono::milliseconds(40));
+  t.on_sent(1, 1000, std::chrono::milliseconds(100));
+  EXPECT_EQ(t.feedback(std::chrono::milliseconds(140)).stall, Nanos{0});
+  EXPECT_EQ(t.feedback(std::chrono::milliseconds(640)).stall, std::chrono::milliseconds(500));
+  t.on_ack(1, kOffset + ms(640), std::chrono::milliseconds(660));
+  EXPECT_EQ(t.feedback(std::chrono::milliseconds(660)).stall, Nanos{0});
 }
 
 TEST(DelayTracker, OldMinimumLeavesTheWindow)
 {
-  DelayTracker t(500ms);
-  t.on_sent(0, 1, 0ms);
-  t.on_ack(0, kOffset + ms(10), 20ms);
-  t.on_sent(1, 1, 1000ms);
-  t.on_ack(1, kOffset + ms(1030), 1040ms);
-  EXPECT_EQ(t.feedback(1040ms).queue_delay, Nanos{0});
+  DelayTracker t(std::chrono::milliseconds(500));
+  t.on_sent(0, 1, std::chrono::milliseconds(0));
+  t.on_ack(0, kOffset + ms(10), std::chrono::milliseconds(20));
+  t.on_sent(1, 1, std::chrono::milliseconds(1000));
+  t.on_ack(1, kOffset + ms(1030), std::chrono::milliseconds(1040));
+  EXPECT_EQ(t.feedback(std::chrono::milliseconds(1040)).queue_delay, Nanos{0});
 }

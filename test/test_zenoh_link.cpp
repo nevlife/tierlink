@@ -15,7 +15,6 @@
 #include <utility>
 #include <vector>
 
-using namespace std::chrono_literals;
 using tierlink::Delivery;
 using tierlink::Tier;
 
@@ -44,7 +43,7 @@ struct Inbox
   std::optional<tierlink::Received> wait()
   {
     std::unique_lock<std::mutex> lock(mutex);
-    if (!cv.wait_for(lock, 5s, [this] { return !items.empty(); })) {
+    if (!cv.wait_for(lock, std::chrono::seconds(5), [this] { return !items.empty(); })) {
       return std::nullopt;
     }
     auto r = std::move(items.front());
@@ -62,11 +61,12 @@ TEST(ZenohLink, FramesArriveAcksReturnAndKeyframeRequestsReachTheEncoder)
   auto vehicle =
     zenoh::Session::open(tierlink::make_config("client", {endpoint}, {}, tierlink::kShortQueue));
   Inbox inbox;
-  tierlink::Receiver receiver(server, "test/r01", 250ms, [&inbox](tierlink::Received r) {
-    std::lock_guard<std::mutex> lock(inbox.mutex);
-    inbox.items.push_back(std::move(r));
-    inbox.cv.notify_one();
-  });
+  tierlink::Receiver receiver(
+    server, "test/r01", std::chrono::milliseconds(250), [&inbox](tierlink::Received r) {
+      std::lock_guard<std::mutex> lock(inbox.mutex);
+      inbox.items.push_back(std::move(r));
+      inbox.cv.notify_one();
+    });
   tierlink::Uplink uplink(
     vehicle,
     tierlink::UplinkConfig{
@@ -74,12 +74,12 @@ TEST(ZenohLink, FramesArriveAcksReturnAndKeyframeRequestsReachTheEncoder)
       Tier::Teleop,
       {{"front_cam", Tier::Teleop, Delivery::Frame, true, 16},
        {"cmd", Tier::Teleop, Delivery::Latest, false, 16}},
-      5ms,
-      100ms,
-      10s},
+      std::chrono::milliseconds(5),
+      std::chrono::milliseconds(100),
+      std::chrono::seconds(10)},
     std::make_unique<tierlink::Fixed>(10'000'000));
   // Declarations reach the other side asynchronously.
-  std::this_thread::sleep_for(500ms);
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
   const auto cam = uplink.stream_id("front_cam");
   ASSERT_TRUE(cam);
@@ -92,7 +92,7 @@ TEST(ZenohLink, FramesArriveAcksReturnAndKeyframeRequestsReachTheEncoder)
   EXPECT_EQ(got->lost, 0u);
   EXPECT_EQ(got->payload, std::vector<std::uint8_t>(2000, 7));
 
-  std::this_thread::sleep_for(200ms);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   const auto [decision, feedback] = uplink.status();
   ASSERT_TRUE(decision);
   EXPECT_EQ(decision->target_bps, 10'000'000u);
@@ -100,7 +100,7 @@ TEST(ZenohLink, FramesArriveAcksReturnAndKeyframeRequestsReachTheEncoder)
 
   EXPECT_FALSE(uplink.take_keyframe_request(*cam));
   receiver.request_keyframe(Tier::Teleop, "front_cam");
-  std::this_thread::sleep_for(200ms);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   EXPECT_TRUE(uplink.take_keyframe_request(*cam));
   EXPECT_FALSE(uplink.take_keyframe_request(*cam));
 }
