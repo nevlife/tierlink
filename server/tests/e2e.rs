@@ -22,6 +22,8 @@ fn header(seq: u64) -> Vec<u8> {
     h.extend_from_slice(&seq.to_le_bytes());
     h.extend_from_slice(&0u64.to_le_bytes());
     h.push(0);
+    h.extend_from_slice(&0u16.to_le_bytes());
+    h.extend_from_slice(&1u16.to_le_bytes());
     h
 }
 

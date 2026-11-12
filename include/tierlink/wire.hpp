@@ -17,20 +17,23 @@ namespace tierlink
 // what the codec produced.
 struct Header
 {
-  static constexpr std::size_t kSize = 25;
+  static constexpr std::size_t kSize = 29;
   // Per session, increasing in sending order across all streams of the tier.
   std::uint64_t seq;
   // Per stream, one per published item, so the receiver sees what the transport dropped.
   std::uint64_t stream_seq;
   std::int64_t sent_ns;
   bool keyframe;
+  // An item larger than the chunk size goes out as `chunks` pieces under one stream_seq.
+  std::uint16_t chunk = 0;
+  std::uint16_t chunks = 1;
 
   std::vector<std::uint8_t> encode() const;
   static std::optional<Header> decode(const std::vector<std::uint8_t> & bytes);
   bool operator==(const Header & o) const
   {
     return seq == o.seq && stream_seq == o.stream_seq && sent_ns == o.sent_ns &&
-           keyframe == o.keyframe;
+           keyframe == o.keyframe && chunk == o.chunk && chunks == o.chunks;
   }
 };
 
@@ -63,6 +66,21 @@ private:
   std::optional<std::uint64_t> next_;
   bool awaiting_ = false;
   std::optional<Nanos> last_request_;
+};
+
+// Puts one stream's pieces back together. A newer item drops an unfinished older one, and a late
+// piece of an older item is ignored.
+class Reassembler
+{
+public:
+  std::optional<std::vector<std::uint8_t>> add(
+    const Header & header, std::vector<std::uint8_t> piece);
+
+private:
+  std::optional<std::uint64_t> newest_;
+  std::vector<std::vector<std::uint8_t>> pieces_;
+  std::size_t received_ = 0;
+  bool done_ = false;
 };
 
 }  // namespace tierlink

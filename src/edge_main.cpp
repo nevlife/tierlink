@@ -15,7 +15,7 @@
 // reports into one link rate and a budget per tier. With a TCP and a UDP endpoint (?rel=1 and
 // ?rel=0), reliable traffic takes TCP and best-effort frames take UDP.
 //
-// tierlink_edge --prefix scv/r01 --listen tcp/127.0.0.1:7447 \
+// tierlink_edge --prefix scv/r01 --listen tcp/127.0.0.1:7447
 //   --connect tcp/<server>:<port>?rel=1 [--connect udp/<server>:<port>?rel=0]
 
 namespace
@@ -31,6 +31,7 @@ constexpr tierlink::LinkManagerConfig kManager{
   150'000,
   4'000'000,
   0.85,
+  0.1,
   100'000,
   milliseconds(300),
   milliseconds(1000),

@@ -14,13 +14,26 @@
 namespace tierlink
 {
 
+// One piece of an item: the whole item, or one chunk of a larger one.
+struct Piece
+{
+  std::size_t id;
+  std::vector<std::uint8_t> payload;
+  bool keyframe;
+  std::uint16_t chunk;
+  std::uint16_t chunks;
+};
+
 // Sends pending data within a bit budget: teleop streams before monitor streams, and within a
-// tier in declaration order.
+// tier in declaration order. An item larger than `chunk_bytes` goes out piece by piece, each
+// paced by the budget, so a large monitor item (a point cloud) neither floods the link nor holds
+// the teleop frames that arrive meanwhile.
 class Scheduler
 {
 public:
   // `burst` bounds unused budget carried over, so an idle stream cannot later flood the link.
-  Scheduler(std::vector<StreamSpec> specs, std::uint64_t budget_bps, Nanos burst);
+  Scheduler(
+    std::vector<StreamSpec> specs, std::uint64_t budget_bps, Nanos burst, std::size_t chunk_bytes);
 
   std::optional<std::size_t> id(std::string_view name) const;
   const StreamSpec & spec(std::size_t id) const { return specs_[id]; }
@@ -31,13 +44,22 @@ public:
     return outboxes_[id].push(std::move(item), now);
   }
 
-  // An item larger than the tokens left is still sent and leaves the bucket in debt, so a large
-  // frame is delayed by its own size instead of waiting forever.
-  std::optional<std::pair<std::size_t, Item>> next(Nanos now);
+  // A piece larger than the tokens left is still sent and leaves the bucket in debt, so the debt is
+  // at most one chunk.
+  std::optional<Piece> next(Nanos now);
 
 private:
   std::vector<StreamSpec> specs_;
   std::vector<Outbox> outboxes_;
+  struct Partial
+  {
+    Item item;
+    std::size_t offset;
+    std::uint16_t chunk;
+    std::uint16_t chunks;
+  };
+  std::vector<std::optional<Partial>> partial_;
+  std::size_t chunk_bytes_;
   std::vector<std::size_t> order_;
   std::uint64_t budget_bps_;
   Nanos burst_;

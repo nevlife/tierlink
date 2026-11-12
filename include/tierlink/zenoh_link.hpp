@@ -68,6 +68,8 @@ struct UplinkConfig
   Nanos delay_window;
   // How often the Uplink reports to the link manager on <prefix>/link/report/<tier>.
   Nanos report_period;
+  // Items larger than this go out in pieces of this size (Scheduler).
+  std::size_t chunk_bytes;
 };
 
 std::string report_key(const std::string & prefix, Tier tier);
@@ -128,6 +130,8 @@ private:
   std::deque<std::tuple<Nanos, std::uint64_t, std::uint64_t>> totals_;
   std::uint64_t next_seq_ = 0;
   std::vector<std::uint64_t> stream_seq_;
+  // The stream_seq of the item whose pieces are going out.
+  std::vector<std::uint64_t> item_seq_;
   std::vector<bool> keyframe_requested_;
 
   std::vector<zenoh::Publisher> publishers_;
@@ -170,6 +174,7 @@ private:
     // Zenoh may call the subscriber from more than one thread.
     std::mutex mutex;
     std::unordered_map<std::string, GapTracker> gaps;
+    std::unordered_map<std::string, Reassembler> pieces;
     std::optional<zenoh::Subscriber<void>> subscriber;
   };
   std::array<std::unique_ptr<PerTier>, 2> tiers_;

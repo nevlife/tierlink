@@ -4,12 +4,19 @@
 #include <chrono>
 #include <numeric>
 #include <utility>
+#include <vector>
 
 namespace tierlink
 {
 
-Scheduler::Scheduler(std::vector<StreamSpec> specs, std::uint64_t budget_bps, Nanos burst)
-: specs_(std::move(specs)), order_(specs_.size()), budget_bps_(budget_bps), burst_(burst)
+Scheduler::Scheduler(
+  std::vector<StreamSpec> specs, std::uint64_t budget_bps, Nanos burst, std::size_t chunk_bytes)
+: specs_(std::move(specs)),
+  partial_(specs_.size()),
+  chunk_bytes_(chunk_bytes),
+  order_(specs_.size()),
+  budget_bps_(budget_bps),
+  burst_(burst)
 {
   outboxes_.reserve(specs_.size());
   for (const auto & s : specs_) {
@@ -31,7 +38,7 @@ std::optional<std::size_t> Scheduler::id(std::string_view name) const
   return std::nullopt;
 }
 
-std::optional<std::pair<std::size_t, Item>> Scheduler::next(Nanos now)
+std::optional<Piece> Scheduler::next(Nanos now)
 {
   using Seconds = std::chrono::duration<double>;
   const auto rate = static_cast<double>(budget_bps_);
@@ -42,12 +49,29 @@ std::optional<std::pair<std::size_t, Item>> Scheduler::next(Nanos now)
     return std::nullopt;
   }
   for (const std::size_t id : order_) {
-    if (outboxes_[id].empty()) {
-      continue;
+    if (!partial_[id]) {
+      if (outboxes_[id].empty()) {
+        continue;
+      }
+      Item item = *outboxes_[id].pop();
+      const auto chunks = static_cast<std::uint16_t>(
+        std::max<std::size_t>(1, (item.payload.size() + chunk_bytes_ - 1) / chunk_bytes_));
+      partial_[id] = Partial{std::move(item), 0, 0, chunks};
     }
-    std::optional<Item> item = outboxes_[id].pop();
-    tokens_bits_ -= static_cast<double>(item->payload.size() * 8);
-    return std::make_pair(id, std::move(*item));
+    Partial & p = *partial_[id];
+    const std::size_t n = std::min(chunk_bytes_, p.item.payload.size() - p.offset);
+    Piece piece{
+      id,
+      std::vector<std::uint8_t>(
+        p.item.payload.begin() + static_cast<std::ptrdiff_t>(p.offset),
+        p.item.payload.begin() + static_cast<std::ptrdiff_t>(p.offset + n)),
+      p.item.keyframe, p.chunk, p.chunks};
+    p.offset += n;
+    if (++p.chunk == p.chunks) {
+      partial_[id].reset();
+    }
+    tokens_bits_ -= static_cast<double>(piece.payload.size() * 8);
+    return piece;
   }
   return std::nullopt;
 }

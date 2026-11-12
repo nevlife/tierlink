@@ -23,6 +23,7 @@ constexpr tierlink::LinkManagerConfig kConfig{
   500'000,
   4'000'000,
   0.85,
+  0.1,
   100'000,
   milliseconds(300),
   milliseconds(1000),
@@ -129,4 +130,15 @@ TEST(Budgeted, FollowsAFreshBudgetAndFallsBackOnceItExpires)
   slot->set(700'000, milliseconds(0));
   EXPECT_EQ(b.update(milliseconds(400), {}).target_bps, 700'000u);
   EXPECT_EQ(b.update(milliseconds(600), {}).target_bps, 300'000u);
+}
+
+TEST(LinkManager, GrowsByAFractionOfTheRateOnceThatExceedsTheStep)
+{
+  auto config = kConfig;
+  config.start_bps = 2'000'000;
+  LinkManager m(config);
+  m.on_report(report(Tier::Monitor, 1'900'000, 1'900'000, milliseconds(5)), milliseconds(0));
+  m.update(milliseconds(0));
+  m.on_report(report(Tier::Monitor, 1'900'000, 1'900'000, milliseconds(5)), milliseconds(1000));
+  EXPECT_EQ(m.update(milliseconds(1000)).link_bps, 2'200'000u);
 }

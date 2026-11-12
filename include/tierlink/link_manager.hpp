@@ -39,6 +39,8 @@ struct LinkManagerConfig
   std::uint64_t max_bps;
   // On congestion the link rate becomes this fraction of what was acknowledged.
   double factor;
+  // Each increase adds the larger of step_bps and this fraction of the rate.
+  double increase;
   std::uint64_t step_bps;
   Nanos hold;
   Nanos probe;

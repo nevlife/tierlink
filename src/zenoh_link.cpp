@@ -126,11 +126,12 @@ BudgetSubscriber::BudgetSubscriber(
 
 Uplink::Uplink(
   const zenoh::Session & session, UplinkConfig config, std::unique_ptr<RateController> controller)
-: scheduler_(config.streams, 0, config.burst),
+: scheduler_(config.streams, 0, config.burst, config.chunk_bytes),
   tracker_(config.delay_window),
   controller_(std::move(controller)),
   tier_(config.tier),
   stream_seq_(config.streams.size(), 0),
+  item_seq_(config.streams.size(), 0),
   keyframe_requested_(config.streams.size(), false),
   report_pub_(declare_control(session, report_key(config.prefix, config.tier)))
 {
@@ -216,14 +217,18 @@ std::vector<Uplink::Outgoing> Uplink::take_batch()
   std::vector<Outgoing> batch;
   while (!decision.max_in_flight_bytes ||
          tracker_.feedback(now).in_flight_bytes < *decision.max_in_flight_bytes) {
-    auto next = scheduler_.next(now);
-    if (!next) {
+    auto piece = scheduler_.next(now);
+    if (!piece) {
       break;
     }
-    const std::size_t id = next->first;
-    const Header header{next_seq_++, stream_seq_[id]++, now.count(), next->second.keyframe};
-    tracker_.on_sent(header.seq, next->second.payload.size(), now);
-    batch.push_back(Outgoing{id, header, std::move(next->second.payload)});
+    const std::size_t id = piece->id;
+    if (piece->chunk == 0) {
+      item_seq_[id] = stream_seq_[id]++;
+    }
+    const Header header{next_seq_++,     item_seq_[id], now.count(),
+                        piece->keyframe, piece->chunk,  piece->chunks};
+    tracker_.on_sent(header.seq, piece->payload.size(), now);
+    batch.push_back(Outgoing{id, header, std::move(piece->payload)});
   }
   return batch;
 }
@@ -292,8 +297,13 @@ Receiver::Receiver(
         state->acks.put(zenoh::Bytes(encode_ack(header->seq, now.count())));
         std::string stream = last_segment(sample.get_keyexpr());
         Arrival arrival{};
+        std::optional<std::vector<std::uint8_t>> item;
         {
           std::lock_guard<std::mutex> lock(state->mutex);
+          item = state->pieces[stream].add(*header, sample.get_payload().as_vector());
+          if (!item) {
+            return;
+          }
           arrival = state->gaps.try_emplace(stream, keyframe_repeat)
                       .first->second.on_arrival(header->stream_seq, header->keyframe, now);
         }
@@ -302,8 +312,7 @@ Receiver::Receiver(
             zenoh::Bytes(std::vector<std::uint8_t>(stream.begin(), stream.end())));
         }
         on_received(Received{
-          tier, std::move(stream), header->seq, header->keyframe, arrival.lost,
-          sample.get_payload().as_vector()});
+          tier, std::move(stream), header->seq, header->keyframe, arrival.lost, std::move(*item)});
       },
       zenoh::closures::none));
   }

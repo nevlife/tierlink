@@ -45,6 +45,7 @@ struct Vehicle {
     catalog: HashMap<String, (String, String)>,
     history: HashMap<String, VecDeque<(u64, Vec<u8>)>>,
     alive: BTreeSet<String>,
+    pieces: HashMap<String, wire::Reassembler>,
     // Arrivals before the catalog named their stream: not stored, counted for the log.
     unknown: u64,
 }
@@ -111,9 +112,10 @@ fn watch(
                     .express(true)
                     .wait();
                 let name = sample.key_expr().as_str().rsplit('/').next().unwrap_or("").to_string();
-                let Ok(cdr) = zstd::decode_all(&sample.payload().to_bytes()[..]) else { return };
-                let now = unix_ns();
                 let mut st = st.lock().unwrap();
+                let Some(item) = st.pieces.entry(name.clone()).or_default().add(&h, sample.payload().to_bytes().to_vec()) else { return };
+                let Ok(cdr) = zstd::decode_all(&item[..]) else { return };
+                let now = unix_ns();
                 let Some((msg_type, topic)) = st.catalog.get(&name).cloned() else {
                     st.unknown += 1;
                     return;

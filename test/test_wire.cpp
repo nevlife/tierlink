@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <utility>
+#include <vector>
 
 using tierlink::GapTracker;
 using tierlink::Header;
@@ -38,4 +39,27 @@ TEST(GapTracker, AGapRequestsUntilAKeyframeArrives)
   EXPECT_TRUE(g.on_arrival(5, false, std::chrono::milliseconds(350)).request_keyframe);
   EXPECT_FALSE(g.on_arrival(6, true, std::chrono::milliseconds(400)).request_keyframe);
   EXPECT_FALSE(g.on_arrival(7, false, std::chrono::milliseconds(800)).request_keyframe);
+}
+
+TEST(Wire, PiecesRoundTripAndReassembleInAnyOrder)
+{
+  const Header h{7, 3, -5, true, 1, 3};
+  EXPECT_EQ(Header::decode(h.encode()), h);
+  EXPECT_FALSE(Header::decode(Header{7, 3, -5, true, 3, 3}.encode()));
+  tierlink::Reassembler r;
+  EXPECT_FALSE(r.add(Header{1, 3, 0, false, 2, 3}, {5}));
+  EXPECT_FALSE(r.add(Header{2, 3, 0, false, 0, 3}, {1, 2}));
+  const auto item = r.add(Header{3, 3, 0, false, 1, 3}, {3, 4});
+  ASSERT_TRUE(item);
+  EXPECT_EQ(*item, (std::vector<std::uint8_t>{1, 2, 3, 4, 5}));
+  EXPECT_EQ(*r.add(Header{4, 4, 0, false, 0, 1}, {9}), std::vector<std::uint8_t>{9});
+}
+
+TEST(Wire, ANewerItemDropsAnUnfinishedOne)
+{
+  tierlink::Reassembler r;
+  EXPECT_FALSE(r.add(Header{1, 3, 0, false, 0, 2}, {1}));
+  EXPECT_FALSE(r.add(Header{2, 4, 0, false, 0, 2}, {2}));
+  EXPECT_FALSE(r.add(Header{3, 3, 0, false, 1, 2}, {1}));
+  EXPECT_EQ(*r.add(Header{4, 4, 0, false, 1, 2}, {3}), (std::vector<std::uint8_t>{2, 3}));
 }

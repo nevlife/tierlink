@@ -103,7 +103,10 @@ Budget LinkManager::update(Nanos now)
     // Grow only while the senders use most of the rate: an idle link says nothing about capacity.
     if (now - *clear_since_ >= config_.probe && sent * 10 >= link_bps_ * 8) {
       clear_since_ = now;
-      link_bps_ = std::min(link_bps_ + config_.step_bps, config_.max_bps);
+      const auto grow = std::max(
+        config_.step_bps,
+        static_cast<std::uint64_t>(static_cast<double>(link_bps_) * config_.increase));
+      link_bps_ = std::min(link_bps_ + grow, config_.max_bps);
     }
   } else {
     clear_since_.reset();

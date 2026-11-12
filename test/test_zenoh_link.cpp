@@ -77,7 +77,8 @@ TEST(ZenohLink, FramesArriveAcksReturnAndKeyframeRequestsReachTheEncoder)
       std::chrono::milliseconds(5),
       std::chrono::milliseconds(100),
       std::chrono::seconds(10),
-      std::chrono::milliseconds(100)},
+      std::chrono::milliseconds(100),
+      4096},
     std::make_unique<tierlink::Fixed>(10'000'000));
   // Declarations reach the other side asynchronously.
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -134,7 +135,8 @@ TEST(ZenohLink, UplinksReportAndFollowTheBudgetThroughTheRouter)
       std::chrono::milliseconds(5),
       std::chrono::milliseconds(100),
       std::chrono::seconds(10),
-      std::chrono::milliseconds(50)},
+      std::chrono::milliseconds(50),
+      4096},
     std::make_unique<tierlink::Budgeted>(
       slot, std::make_unique<tierlink::Fixed>(100'000), std::chrono::milliseconds(500)));
   {
