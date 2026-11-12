@@ -5,10 +5,7 @@
 #include <chrono>
 #include <vector>
 
-using tierlink::Decision;
-using tierlink::Feedback;
 using tierlink::Item;
-using tierlink::Nanos;
 using tierlink::Scheduler;
 using tierlink::Tier;
 
@@ -30,16 +27,6 @@ Scheduler scheduler(std::uint64_t bps)
 Item item(std::uint8_t byte, std::size_t len)
 {
   return Item{std::vector<std::uint8_t>(len, byte), false};
-}
-
-Decision link(std::uint64_t bps)
-{
-  return Decision{bps, std::nullopt};
-}
-
-Feedback delay(Nanos d)
-{
-  return Feedback{d, Nanos{0}, 0};
 }
 
 }  // namespace
@@ -84,23 +71,4 @@ TEST(Scheduler, AZeroBudgetSendsNothing)
   auto s = scheduler(0);
   s.push(1, item(1, 1), std::chrono::milliseconds(0));
   EXPECT_FALSE(s.next(std::chrono::milliseconds(1)));
-}
-
-TEST(TierPolicy, MonitoringGetsAShareOfWhatTeleopLeaves)
-{
-  const tierlink::TierPolicy p{0.1, std::chrono::milliseconds(50)};
-  EXPECT_EQ(
-    p.monitor_allowance(link(1'000'000), 500'000, delay(std::chrono::milliseconds(0))), 100'000u);
-  EXPECT_EQ(
-    p.monitor_allowance(link(1'000'000), 950'000, delay(std::chrono::milliseconds(0))), 50'000u);
-  EXPECT_EQ(p.monitor_allowance(link(1'000'000), 0, delay(std::chrono::milliseconds(80))), 0u);
-}
-
-TEST(Allowance, AnExpiredAllowanceFallsBackToTheOwnController)
-{
-  tierlink::Allowance a(std::chrono::milliseconds(500));
-  EXPECT_FALSE(a.cap(std::chrono::milliseconds(0)));
-  a.update(100'000, std::chrono::milliseconds(0));
-  EXPECT_EQ(a.cap(std::chrono::milliseconds(400)), 100'000u);
-  EXPECT_FALSE(a.cap(std::chrono::milliseconds(600)));
 }

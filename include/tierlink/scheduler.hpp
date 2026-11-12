@@ -45,34 +45,6 @@ private:
   std::optional<Nanos> last_refill_;
 };
 
-// How the teleop process limits monitoring while it drives.
-struct TierPolicy
-{
-  // Fraction of the link budget monitoring may use while teleop is active.
-  double monitor_share;
-  // Above this queue delay monitoring stops entirely, before teleop is cut.
-  Nanos monitor_stop_above;
-
-  std::uint64_t monitor_allowance(
-    const Decision & link, std::uint64_t teleop_bps, const Feedback & feedback) const;
-};
-
-inline constexpr const char * kAllowanceName = "allowance";
-
-// The last published allowance; once it expires, monitoring runs on its own controller.
-class Allowance
-{
-public:
-  explicit Allowance(Nanos expires_after) : expires_after_(expires_after) {}
-  void update(std::uint64_t bps, Nanos now) { latest_ = std::make_pair(now, bps); }
-  // The cap for the monitoring Uplink (set_cap), or nothing once the allowance expired.
-  std::optional<std::uint64_t> cap(Nanos now) const;
-
-private:
-  Nanos expires_after_;
-  std::optional<std::pair<Nanos, std::uint64_t>> latest_;
-};
-
 }  // namespace tierlink
 
 #endif  // TIERLINK__SCHEDULER_HPP_

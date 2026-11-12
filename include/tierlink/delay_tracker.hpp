@@ -34,6 +34,9 @@ public:
   // The transport is ordered, so an acknowledgement also covers every earlier item.
   void on_ack(std::uint64_t id, std::int64_t received_remote_ns, Nanos now);
   Feedback feedback(Nanos now) const;
+  // Bytes sent and acknowledged since construction, for the link report's rates. An ack covers
+  // every earlier item, so over UDP a lost item counts as acknowledged once a later one is.
+  std::pair<std::uint64_t, std::uint64_t> totals() const { return {sent_total_, acked_total_}; }
 
 private:
   struct Sent
@@ -44,6 +47,8 @@ private:
   };
   std::deque<Sent> unacked_;
   std::uint64_t in_flight_ = 0;
+  std::uint64_t sent_total_ = 0;
+  std::uint64_t acked_total_ = 0;
   // Receiver clock minus sender clock plus path delay; the unknown offset cancels against the
   // minimum, so the clocks need no synchronization. The window bounds clock drift.
   WindowMin one_way_;

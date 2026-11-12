@@ -2,6 +2,7 @@
 #define TIERLINK__ZENOH_LINK_HPP_
 
 #include "tierlink/delay_tracker.hpp"
+#include "tierlink/link_manager.hpp"
 #include "tierlink/scheduler.hpp"
 #include "tierlink/stream.hpp"
 #include "tierlink/wire.hpp"
@@ -11,6 +12,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -18,13 +20,14 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-// Each tier has its own session, so its own TCP connection: a retransmission on the monitoring
-// connection never holds a teleop frame. Keys are <prefix>/<tier>/data/<stream>,
-// <prefix>/<tier>/ack and <prefix>/<tier>/keyframe.
+// Keys are <prefix>/<tier>/data/<stream>, <prefix>/<tier>/ack and <prefix>/<tier>/keyframe. Frame
+// streams are published best effort: behind a router with a UDP link (`?rel=0`) they take UDP, so
+// a lost packet never holds later frames; everything else stays reliable (TCP).
 namespace tierlink
 {
 
@@ -63,6 +66,23 @@ struct UplinkConfig
   Nanos tick;
   Nanos burst;
   Nanos delay_window;
+  // How often the Uplink reports to the link manager on <prefix>/link/report/<tier>.
+  Nanos report_period;
+};
+
+std::string report_key(const std::string & prefix, Tier tier);
+std::string budget_key(const std::string & prefix, Tier tier);
+
+// Writes the link manager's budget for one tier into a slot that Budgeted reads.
+class BudgetSubscriber
+{
+public:
+  BudgetSubscriber(
+    const zenoh::Session & session, const std::string & prefix, Tier tier,
+    std::shared_ptr<BudgetSlot> slot);
+
+private:
+  std::optional<zenoh::Subscriber<void>> subscriber_;
 };
 
 // One tier's sending side: its streams, its controller and its own session.
@@ -92,8 +112,9 @@ private:
     Header header;
     std::vector<std::uint8_t> payload;
   };
-  void run(Nanos tick);
+  void run(Nanos tick, Nanos report_period);
   std::vector<Outgoing> take_batch();
+  LinkReport report(Nanos now);
 
   // Pushes come from node callbacks, acknowledgements from Zenoh threads, sending from run().
   mutable std::mutex mutex_;
@@ -102,11 +123,15 @@ private:
   std::unique_ptr<RateController> controller_;
   std::optional<std::uint64_t> cap_bps_;
   std::optional<Decision> decision_;
+  Tier tier_;
+  // (time, sent bytes, acked bytes) over the last second, for the report's rates.
+  std::deque<std::tuple<Nanos, std::uint64_t, std::uint64_t>> totals_;
   std::uint64_t next_seq_ = 0;
   std::vector<std::uint64_t> stream_seq_;
   std::vector<bool> keyframe_requested_;
 
   std::vector<zenoh::Publisher> publishers_;
+  zenoh::Publisher report_pub_;
   std::atomic<bool> stop_{false};
   std::thread thread_;
   // Declared last, so they are undeclared first and no callback outlives the state.

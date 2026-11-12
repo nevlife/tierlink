@@ -52,24 +52,4 @@ std::optional<std::pair<std::size_t, Item>> Scheduler::next(Nanos now)
   return std::nullopt;
 }
 
-std::uint64_t TierPolicy::monitor_allowance(
-  const Decision & link, std::uint64_t teleop_bps, const Feedback & feedback) const
-{
-  if (std::max(feedback.queue_delay, feedback.stall) > monitor_stop_above) {
-    return 0;
-  }
-  const auto share =
-    static_cast<std::uint64_t>(static_cast<double>(link.target_bps) * monitor_share);
-  const std::uint64_t left = link.target_bps > teleop_bps ? link.target_bps - teleop_bps : 0;
-  return std::min(share, left);
-}
-
-std::optional<std::uint64_t> Allowance::cap(Nanos now) const
-{
-  if (latest_ && now - latest_->first <= expires_after_) {
-    return latest_->second;
-  }
-  return std::nullopt;
-}
-
 }  // namespace tierlink

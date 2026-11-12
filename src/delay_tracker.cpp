@@ -29,6 +29,7 @@ void DelayTracker::on_sent(std::uint64_t id, std::uint64_t bytes, Nanos at)
 {
   unacked_.push_back(Sent{id, at, bytes});
   in_flight_ += bytes;
+  sent_total_ += bytes;
 }
 
 void DelayTracker::on_ack(std::uint64_t id, std::int64_t received_remote_ns, Nanos now)
@@ -36,6 +37,7 @@ void DelayTracker::on_ack(std::uint64_t id, std::int64_t received_remote_ns, Nan
   std::optional<Nanos> sent_at;
   while (!unacked_.empty() && unacked_.front().id <= id) {
     in_flight_ -= unacked_.front().bytes;
+    acked_total_ += unacked_.front().bytes;
     if (unacked_.front().id == id) {
       sent_at = unacked_.front().at;
     }

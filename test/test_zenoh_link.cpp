@@ -76,7 +76,8 @@ TEST(ZenohLink, FramesArriveAcksReturnAndKeyframeRequestsReachTheEncoder)
        {"cmd", Tier::Teleop, Delivery::Latest, false, 16}},
       std::chrono::milliseconds(5),
       std::chrono::milliseconds(100),
-      std::chrono::seconds(10)},
+      std::chrono::seconds(10),
+      std::chrono::milliseconds(100)},
     std::make_unique<tierlink::Fixed>(10'000'000));
   // Declarations reach the other side asynchronously.
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -103,4 +104,52 @@ TEST(ZenohLink, FramesArriveAcksReturnAndKeyframeRequestsReachTheEncoder)
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   EXPECT_TRUE(uplink.take_keyframe_request(*cam));
   EXPECT_FALSE(uplink.take_keyframe_request(*cam));
+}
+
+TEST(ZenohLink, UplinksReportAndFollowTheBudgetThroughTheRouter)
+{
+  const std::string endpoint = "tcp/127.0.0.1:" + std::to_string(free_port());
+  auto edge = zenoh::Session::open(tierlink::make_config("router", {}, {endpoint}, std::nullopt));
+  auto vehicle =
+    zenoh::Session::open(tierlink::make_config("client", {endpoint}, {}, std::nullopt));
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::optional<tierlink::LinkReport> got;
+  auto reports = edge.declare_subscriber(
+    zenoh::KeyExpr("test/r01/link/report/*"),
+    [&](zenoh::Sample & sample) {
+      std::lock_guard<std::mutex> lock(mutex);
+      got = tierlink::decode_report(sample.get_payload().as_vector());
+      cv.notify_one();
+    },
+    zenoh::closures::none);
+  auto slot = std::make_shared<tierlink::BudgetSlot>();
+  tierlink::BudgetSubscriber budget_sub(vehicle, "test/r01", Tier::Monitor, slot);
+  tierlink::Uplink uplink(
+    vehicle,
+    tierlink::UplinkConfig{
+      "test/r01",
+      Tier::Monitor,
+      {{"odom", Tier::Monitor, Delivery::Latest, false, 16}},
+      std::chrono::milliseconds(5),
+      std::chrono::milliseconds(100),
+      std::chrono::seconds(10),
+      std::chrono::milliseconds(50)},
+    std::make_unique<tierlink::Budgeted>(
+      slot, std::make_unique<tierlink::Fixed>(100'000), std::chrono::milliseconds(500)));
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&] { return got.has_value(); }));
+    EXPECT_EQ(got->tier, Tier::Monitor);
+  }
+  auto budget =
+    edge.declare_publisher(zenoh::KeyExpr(tierlink::budget_key("test/r01", Tier::Monitor)));
+  for (int i = 0; i < 20 && slot->get() == std::nullopt; ++i) {
+    budget.put(zenoh::Bytes(tierlink::encode_bps(700'000)));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  const auto decision = uplink.status().first;
+  ASSERT_TRUE(decision);
+  EXPECT_EQ(decision->target_bps, 700'000u);
 }

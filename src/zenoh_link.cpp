@@ -43,6 +43,9 @@ zenoh::Publisher declare_stream(
   // paces it below the link budget.
   options.congestion_control =
     spec.delivery == Delivery::Reliable ? Z_CONGESTION_CONTROL_BLOCK : Z_CONGESTION_CONTROL_DROP;
+  if (spec.delivery == Delivery::Frame) {
+    options.reliability = Z_RELIABILITY_BEST_EFFORT;
+  }
   return session.declare_publisher(zenoh::KeyExpr(base + "/data/" + spec.name), std::move(options));
 }
 
@@ -96,13 +99,40 @@ Nanos steady_now()
   return std::chrono::duration_cast<Nanos>(std::chrono::steady_clock::now().time_since_epoch());
 }
 
+std::string report_key(const std::string & prefix, Tier tier)
+{
+  return prefix + "/link/report/" + std::string(tier_name(tier));
+}
+
+std::string budget_key(const std::string & prefix, Tier tier)
+{
+  return prefix + "/link/budget/" + std::string(tier_name(tier));
+}
+
+BudgetSubscriber::BudgetSubscriber(
+  const zenoh::Session & session, const std::string & prefix, Tier tier,
+  std::shared_ptr<BudgetSlot> slot)
+{
+  subscriber_.emplace(session.declare_subscriber(
+    zenoh::KeyExpr(budget_key(prefix, tier)),
+    [slot](zenoh::Sample & sample) {
+      const auto bps = decode_bps(sample.get_payload().as_vector());
+      if (bps) {
+        slot->set(*bps, steady_now());
+      }
+    },
+    zenoh::closures::none));
+}
+
 Uplink::Uplink(
   const zenoh::Session & session, UplinkConfig config, std::unique_ptr<RateController> controller)
 : scheduler_(config.streams, 0, config.burst),
   tracker_(config.delay_window),
   controller_(std::move(controller)),
+  tier_(config.tier),
   stream_seq_(config.streams.size(), 0),
-  keyframe_requested_(config.streams.size(), false)
+  keyframe_requested_(config.streams.size(), false),
+  report_pub_(declare_control(session, report_key(config.prefix, config.tier)))
 {
   const std::string base = config.prefix + "/" + std::string(tier_name(config.tier));
   for (const auto & s : config.streams) {
@@ -130,7 +160,8 @@ Uplink::Uplink(
       }
     },
     zenoh::closures::none));
-  thread_ = std::thread([this, tick = config.tick] { run(tick); });
+  thread_ =
+    std::thread([this, tick = config.tick, period = config.report_period] { run(tick, period); });
 }
 
 Uplink::~Uplink()
@@ -197,12 +228,34 @@ std::vector<Uplink::Outgoing> Uplink::take_batch()
   return batch;
 }
 
-void Uplink::run(Nanos tick)
+LinkReport Uplink::report(Nanos now)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  const auto [sent, acked] = tracker_.totals();
+  totals_.emplace_back(now, sent, acked);
+  while (totals_.size() > 2 && now - std::get<0>(totals_[1]) >= std::chrono::seconds(1)) {
+    totals_.pop_front();
+  }
+  const auto & [t0, sent0, acked0] = totals_.front();
+  const double seconds = std::chrono::duration<double>(now - t0).count();
+  const auto rate = [seconds](std::uint64_t bytes) {
+    return seconds > 0.0 ? static_cast<std::uint64_t>(static_cast<double>(bytes) * 8 / seconds) : 0;
+  };
+  const Feedback f = tracker_.feedback(now);
+  return LinkReport{tier_, rate(sent - sent0), rate(acked - acked0), f.queue_delay, f.stall};
+}
+
+void Uplink::run(Nanos tick, Nanos report_period)
 {
   auto wake = std::chrono::steady_clock::now();
+  Nanos next_report = steady_now();
   while (!stop_) {
     wake += tick;
     std::this_thread::sleep_until(wake);
+    if (steady_now() >= next_report) {
+      next_report += report_period;
+      report_pub_.put(zenoh::Bytes(encode_report(report(steady_now()))));
+    }
     for (auto & out : take_batch()) {
       auto options = zenoh::Publisher::PutOptions::create_default();
       options.attachment = zenoh::Bytes(out.header.encode());
