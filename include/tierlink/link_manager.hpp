@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -133,6 +134,9 @@ struct SplitConfig
   // watching is never acknowledged, and its growing stall says nothing about the link. A tier
   // that was acknowledged and then stops is an outage and still counts.
   Nanos acked_within;
+  // Teleop gets its peak over the window times the headroom; what it leaves goes to monitoring.
+  double teleop_headroom = 1.25;
+  Nanos teleop_usage_window{std::chrono::seconds(1)};
 };
 
 struct Budget
@@ -155,6 +159,7 @@ private:
   // Overuse reported since the last update, per tier.
   std::array<bool, 2> over_{false, false};
   std::array<std::optional<Nanos>, 2> last_acked_;
+  std::deque<std::pair<Nanos, std::uint64_t>> teleop_sent_;
 };
 
 // The latest budget for one tier, written by a subscriber and read by Budgeted.

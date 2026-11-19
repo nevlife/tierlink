@@ -112,6 +112,18 @@ TEST(Wire, AParityPieceRebuildsAnyOneLostPieceOfItsGroup)
   }
 }
 
+TEST(Wire, AnItemIsDeliveredOnceEvenWhenItsParityComesLast)
+{
+  tierlink::Parity p;
+  p.add({7, 8});
+  const auto parity = p.take();
+  tierlink::Reassembler r;
+  EXPECT_TRUE(r.add(Header{1, 4, 0, false, 0, 1, 4}, {7, 8}));
+  EXPECT_FALSE(r.add(Header{2, 4, 0, false, 1, 1, 4}, parity));
+  EXPECT_FALSE(r.add(Header{3, 4, 0, false, 0, 1, 4}, {7, 8}));
+  EXPECT_TRUE(r.add(Header{4, 5, 0, false, 0, 1, 4}, {9}));
+}
+
 TEST(Wire, TwoLostPiecesOfOneGroupLoseTheItem)
 {
   const auto sent = with_parity();

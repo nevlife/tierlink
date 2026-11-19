@@ -49,6 +49,10 @@ that fit one UDP datagram (`chunk_bytes` of the stream, `link.frame_chunk_bytes`
 parameter file), because Zenoh loses a fragmented message with any of its fragments. The parity is
 paced by the same budget, so an encoder aims at `budget / (1 + Uplink::parity_ratio)`.
 
+Acknowledgements carry the receive time in Unix ns. The sender subtracts the minimum one-way delay,
+so the offset to its own clock cancels; a second operator or a restarted one keeps that offset as
+long as the receivers' clocks agree (NTP).
+
 Zenoh drops the newest message when its queue is full and reports success, so a dropped
 inter-frame would break the picture silently. The receiver therefore requests a keyframe when a
 stream has a gap, and repeats the request on later arrivals until a keyframe comes. The encoder
@@ -72,8 +76,10 @@ all processes on the vehicle into one link rate with one of two estimators:
 | `gcc`     | GCC (WebRTC): the trendline's overuse cuts to a fraction of what was delivered, normal growth is multiplicative far from the last overuse and additive near it, loss above 10 % cuts. Teleop's gradient counts while teleop runs, because monitoring's TCP delay also grows in the vehicle's own send buffer |
 
 It then splits the rate into a budget per tier
-on `<prefix>/link/budget/<tier>`: teleop between its minimum and maximum, monitoring the rest but
-never under its floor, and only its floor while teleop runs and the queue is long. A tier counts
+on `<prefix>/link/budget/<tier>`: teleop the most it sent over the last `teleop_usage_window_ms`
+times `teleop_headroom` (1.25), between its minimum and maximum, so what a still scene leaves
+unused goes to monitoring; monitoring the rest but never under its floor, and only its floor while
+teleop runs and the queue is long. A tier counts
 only while it was acknowledged recently, so video with no operator watching does not read as
 congestion. A process wraps its own controller in `Budgeted`, which follows the budget while it is
 fresh and falls back to the own controller without one.

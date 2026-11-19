@@ -68,7 +68,8 @@ EdgeParams edge_params(const YAML::Node & e)
   const YAML::Node s = e["split"];
   p.split = SplitConfig{
     ms(s, "monitor_stop_above_ms"), kbps(s, "teleop_min_kbps"),   kbps(s, "teleop_max_kbps"),
-    kbps(s, "monitor_floor_kbps"),  ms(s, "report_timeout_ms"), ms(s, "acked_within_ms")};
+    kbps(s, "monitor_floor_kbps"),  ms(s, "report_timeout_ms"), ms(s, "acked_within_ms"),
+    s["teleop_headroom"].as<double>(), ms(s, "teleop_usage_window_ms")};
   check_range(p.aimd, "edge.rate");
   if (p.estimator != "aimd" && p.estimator != "gcc") {
     throw std::invalid_argument("edge.estimator must be aimd or gcc");

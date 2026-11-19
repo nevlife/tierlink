@@ -52,8 +52,8 @@ private:
   std::uint64_t sent_total_ = 0;
   std::uint64_t acked_total_ = 0;
   std::uint64_t lost_total_ = 0;
-  // Receiver clock minus sender clock plus path delay; the unknown offset cancels against the
-  // minimum, so the clocks need no synchronization. The window bounds clock drift.
+  // Receivers' Unix time (kept in agreement by NTP) minus the sender's steady clock plus path delay;
+  // the offset cancels against the minimum, whose window bounds clock drift.
   WindowMin one_way_;
   WindowMin rtt_;
   Nanos queue_delay_{0};

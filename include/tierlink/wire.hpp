@@ -56,7 +56,8 @@ private:
   bool added_ = false;
 };
 
-// The sequence acknowledged and the receiver's clock when it arrived.
+// The sequence acknowledged and when it arrived, in Unix ns: every receiver of a tier (operators,
+// the server, a restarted one) stamps the same clock, so the sender's delay minimum holds across them.
 std::vector<std::uint8_t> encode_ack(std::uint64_t seq, std::int64_t received_ns);
 std::optional<std::pair<std::uint64_t, std::int64_t>> decode_ack(
   const std::vector<std::uint8_t> & bytes);

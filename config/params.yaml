@@ -54,6 +54,10 @@ edge:
     # The teleop encoder's range (teleop_video's rate.*).
     teleop_min_kbps: 150
     teleop_max_kbps: 2000
+    # Teleop gets the most it sent over the window times this, so a budget the encoder leaves
+    # unused (a still scene) goes to monitoring. At its budget teleop grows by this each period.
+    teleop_headroom: 1.25
+    teleop_usage_window_ms: 1000
     monitor_floor_kbps: 30
     monitor_stop_above_ms: 50
     report_timeout_ms: 500

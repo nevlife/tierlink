@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 use tierlink_wire as wire;
@@ -82,7 +82,6 @@ fn watch(
     state: Arc<Mutex<Vehicle>>,
     store: Arc<Mutex<store::Store>>,
     history: Duration,
-    start: Instant,
 ) -> anyhow::Result<Subscriptions> {
     let prefix = v.prefix.clone();
     let mut subs = Vec::new();
@@ -108,7 +107,7 @@ fn watch(
             .callback(move |sample: Sample| {
                 let Some(h) = sample.attachment().and_then(|a| wire::decode_header(&a.to_bytes())) else { return };
                 let _ = s
-                    .put(format!("{p}/monitor/ack"), wire::encode_ack(h.seq, start.elapsed().as_nanos() as u64))
+                    .put(format!("{p}/monitor/ack"), wire::encode_ack(h.seq, unix_ns()))
                     .congestion_control(CongestionControl::Drop)
                     .priority(Priority::InteractiveHigh)
                     .express(true)
@@ -187,7 +186,6 @@ fn main() -> anyhow::Result<()> {
     let path = std::env::args().nth(1).ok_or_else(|| anyhow::anyhow!("usage: fleetd <config.yaml>"))?;
     let config: Config = serde_yaml::from_str(&std::fs::read_to_string(&path)?)?;
     let session = session(&config.connect)?;
-    let start = Instant::now();
     let history = Duration::from_secs(config.history_seconds);
 
     let mut states = BTreeMap::new();
@@ -196,7 +194,7 @@ fn main() -> anyhow::Result<()> {
     for v in &config.vehicles {
         let state = Arc::new(Mutex::new(Vehicle::default()));
         let store = Arc::new(Mutex::new(store::Store::new(config.data_dir.join(&v.id))));
-        watches.push(watch(&session, v, state.clone(), store.clone(), history, start)?);
+        watches.push(watch(&session, v, state.clone(), store.clone(), history)?);
         states.insert(v.id.clone(), (v.clone(), state));
         stores.push(store);
     }

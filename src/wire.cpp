@@ -129,6 +129,11 @@ std::optional<Assembled> Reassembler::add(const Header & header, std::vector<std
   if (newest_ && header.stream_seq < *newest_) {
     return std::nullopt;
   }
+  // A piece of the item just delivered, such as the parity after its last data piece: a
+  // one-piece group's parity is the piece itself and would deliver the item twice.
+  if (done_ && newest_ == header.stream_seq) {
+    return std::nullopt;
+  }
   if (header.chunks == 1 && header.fec_group == 0) {
     newest_ = header.stream_seq;
     done_ = true;

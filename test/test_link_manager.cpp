@@ -109,6 +109,23 @@ TEST(LinkManager, TeleopTakesWhatItNeedsAndMonitoringKeepsItsFloor)
   EXPECT_EQ(b.tier_bps[1], 30'000u);
 }
 
+TEST(LinkManager, WhatTeleopLeavesUnusedGoesToMonitoring)
+{
+  LinkManager m = aimd();
+  m.on_report(report(Tier::Teleop, 300'000, 300'000, milliseconds(5)), milliseconds(0));
+  m.on_report(report(Tier::Monitor, 50'000, 50'000, milliseconds(5)), milliseconds(0));
+  auto b = m.update(milliseconds(0));
+  EXPECT_EQ(b.tier_bps[0], 375'000u);
+  EXPECT_EQ(b.tier_bps[1], 625'000u);
+  // The peak of the window holds, so a quiet period between frames does not cut the encoder.
+  m.on_report(report(Tier::Teleop, 100'000, 100'000, milliseconds(5)), milliseconds(500));
+  b = m.update(milliseconds(500));
+  EXPECT_EQ(b.tier_bps[0], 375'000u);
+  m.on_report(report(Tier::Teleop, 100'000, 100'000, milliseconds(5)), milliseconds(1600));
+  b = m.update(milliseconds(1600));
+  EXPECT_EQ(b.tier_bps[0], 150'000u);
+}
+
 TEST(LinkManager, MonitoringGetsTheWholeLinkWithoutTeleop)
 {
   LinkManager m = aimd();

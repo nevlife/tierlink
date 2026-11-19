@@ -62,6 +62,11 @@ impl Reassembler {
         if self.newest.is_some_and(|n| h.stream_seq < n) {
             return None;
         }
+        // A piece of the item just delivered, such as the parity after its last data piece: a
+        // one-piece group's parity is the piece itself and would deliver the item twice.
+        if self.done && self.newest == Some(h.stream_seq) {
+            return None;
+        }
         if h.chunks == 1 && h.fec_group == 0 {
             self.newest = Some(h.stream_seq);
             self.done = true;
@@ -135,7 +140,8 @@ impl Reassembler {
     }
 }
 
-/// The sequence acknowledged and the receiver's clock when it arrived.
+/// The sequence acknowledged and when it arrived, in Unix ns (tierlink `encode_ack`): every
+/// receiver of a tier stamps the same clock.
 pub fn encode_ack(seq: u64, received_ns: u64) -> Vec<u8> {
     let mut out = seq.to_le_bytes().to_vec();
     out.extend_from_slice(&received_ns.to_le_bytes());
@@ -217,6 +223,16 @@ mod tests {
             }
             assert_eq!(got, Some(vec![1, 2, 3, 4, 5, 6, 7, 8]), "lost {lost}");
         }
+    }
+
+    #[test]
+    fn an_item_is_delivered_once_even_when_its_parity_comes_last() {
+        let h = |seq, stream_seq, chunk| Header { seq, stream_seq, sent_ns: 0, keyframe: false, chunk, chunks: 1, fec_group: 4 };
+        let mut r = Reassembler::default();
+        assert_eq!(r.add(&h(1, 4, 0), vec![7, 8]), Some(vec![7, 8]));
+        assert_eq!(r.add(&h(2, 4, 1), vec![2, 0, 7, 8]), None);
+        assert_eq!(r.add(&h(3, 4, 0), vec![7, 8]), None);
+        assert_eq!(r.add(&h(4, 5, 0), vec![9]), Some(vec![9]));
     }
 
     #[test]

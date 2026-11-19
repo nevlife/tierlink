@@ -204,9 +204,19 @@ Budget LinkManager::update(Nanos now)
     b.tier_bps[monitor] = link;
     return b;
   }
+  teleop_sent_.emplace_back(now, latest_[teleop]->second.sent_bps);
+  while (now - teleop_sent_.front().first > split_.teleop_usage_window) {
+    teleop_sent_.pop_front();
+  }
+  std::uint64_t peak = 0;
+  for (const auto & s : teleop_sent_) {
+    peak = std::max(peak, s.second);
+  }
+  const auto demand = static_cast<std::uint64_t>(static_cast<double>(peak) * split_.teleop_headroom);
   const std::uint64_t room =
     link > split_.monitor_floor_bps ? link - split_.monitor_floor_bps : 0;
-  b.tier_bps[teleop] = std::clamp(room, split_.teleop_min_bps, split_.teleop_max_bps);
+  b.tier_bps[teleop] =
+    std::clamp(std::min(room, demand), split_.teleop_min_bps, split_.teleop_max_bps);
   b.tier_bps[monitor] = signal.delay > split_.monitor_stop_above || link <= b.tier_bps[teleop]
                           ? split_.monitor_floor_bps
                           : std::max(link - b.tier_bps[teleop], split_.monitor_floor_bps);

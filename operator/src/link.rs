@@ -27,10 +27,6 @@ pub fn unix_ns() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64
 }
 
-fn mono_ns(start: Instant) -> u64 {
-    start.elapsed().as_nanos() as u64
-}
-
 #[derive(Default)]
 pub struct StreamStat {
     pub msg_type: String,
@@ -44,6 +40,8 @@ pub struct Status {
     pub video_frames: u64,
     pub video_bytes: u64,
     pub video_lost: u64,
+    /// The newest frame's stream sequence: frames the vehicle sent, received or not.
+    pub video_seq: u64,
     pub keyframes: u64,
     pub video_last: Option<Instant>,
     pub streams: BTreeMap<String, StreamStat>,
@@ -179,7 +177,6 @@ impl Link {
     pub fn open(connect: &[String], prefix: &str, robot: &str, decoder: Arc<Decoder>, ack_monitor: bool) -> anyhow::Result<Self> {
         let session = zenoh::open(config(connect)?).wait().map_err(|e| anyhow::anyhow!("{e}"))?;
         let status = Arc::new(Mutex::new(Status::default()));
-        let start = Instant::now();
         let mut subs = Vec::new();
 
         let (s, st, p) = (session.clone(), status.clone(), prefix.to_string());
@@ -191,7 +188,7 @@ impl Link {
                 .declare_subscriber(format!("{prefix}/teleop/data/{VIDEO_STREAM}"))
                 .callback(move |sample: Sample| {
                     let Some(h) = sample.attachment().and_then(|a| wire::decode_header(&a.to_bytes())) else { return };
-                    control_put(&s, format!("{p}/teleop/ack"), wire::encode_ack(h.seq, mono_ns(start)));
+                    control_put(&s, format!("{p}/teleop/ack"), wire::encode_ack(h.seq, unix_ns()));
                     let Some(bytes) = video_pieces.lock().unwrap().add(&h, sample.payload().to_bytes().to_vec()) else { return };
                     let (lost, request) = gaps.lock().unwrap().arrival(h.stream_seq, h.keyframe);
                     if request {
@@ -211,6 +208,7 @@ impl Link {
                         st.video_frames += 1;
                         st.video_bytes += bytes.len() as u64;
                         st.video_lost += lost;
+                        st.video_seq = h.stream_seq;
                         st.keyframes += h.keyframe as u64;
                         st.video_last = Some(Instant::now());
                         st.delay_sum.0 += queue as f64 / 1e6;
@@ -231,7 +229,7 @@ impl Link {
                 .callback(move |sample: Sample| {
                     let Some(h) = sample.attachment().and_then(|a| wire::decode_header(&a.to_bytes())) else { return };
                     if ack_monitor {
-                        control_put(&s, format!("{p}/monitor/ack"), wire::encode_ack(h.seq, mono_ns(start)));
+                        control_put(&s, format!("{p}/monitor/ack"), wire::encode_ack(h.seq, unix_ns()));
                     }
                     let name = sample.key_expr().as_str().rsplit('/').next().unwrap_or("").to_string();
                     let piece = sample.payload().to_bytes().to_vec();
@@ -291,6 +289,12 @@ impl Link {
                 .callback(move |sample: Sample| {
                     if let Some(state) = wire::decode_state(&sample.payload().to_bytes()) {
                         let mut st = st.lock().unwrap();
+                        // The vehicle answers every session on one key; another operator's arm or
+                        // refusal is not this one's state.
+                        let ours = |s: &Option<(String, u64)>| s.as_ref().is_some_and(|s| s.0 == state.session);
+                        if !ours(&st.session) && !ours(&st.pending) {
+                            return;
+                        }
                         if state.armed && st.pending.as_ref().is_some_and(|p| p.1 == state.epoch) {
                             st.session = st.pending.take();
                         }

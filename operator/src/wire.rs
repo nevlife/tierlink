@@ -66,6 +66,7 @@ pub fn encode_motion(m: &Motion) -> Vec<u8> {
 }
 
 pub struct ArmState {
+    pub session: String,
     pub epoch: u64,
     pub armed: bool,
     pub reason: String,
@@ -120,8 +121,8 @@ pub fn decode_hop(b: &[u8]) -> Option<u64> {
 pub fn decode_state(b: &[u8]) -> Option<ArmState> {
     let mut r = Reader::new(b, MESSAGE_VERSION);
     let _robot = r.str16();
-    let _session = r.str16();
-    let s = ArmState { epoch: r.u64(), armed: r.u8() != 0, reason: r.str16() };
+    let session = r.str16();
+    let s = ArmState { session, epoch: r.u64(), armed: r.u8() != 0, reason: r.str16() };
     r.done().then_some(s)
 }
 
@@ -257,7 +258,7 @@ mod tests {
         b.push(1);
         b.extend_from_slice(&0u16.to_le_bytes());
         let s = decode_state(&b).unwrap();
-        assert!(s.armed && s.epoch == 7 && s.reason.is_empty());
+        assert!(s.armed && s.session == "s" && s.epoch == 7 && s.reason.is_empty());
         assert!(decode_state(&b[..b.len() - 1]).is_none());
     }
 

@@ -308,7 +308,10 @@ Receiver::Receiver(
         if (!header) {
           return;
         }
-        state->acks.put(zenoh::Bytes(encode_ack(header->seq, now.count())));
+        state->acks.put(zenoh::Bytes(encode_ack(
+          header->seq, std::chrono::duration_cast<Nanos>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count())));
         std::string stream = last_segment(sample.get_keyexpr());
         Arrival arrival{};
         std::optional<Assembled> item;
