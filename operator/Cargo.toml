@@ -1,0 +1,18 @@
+[package]
+name = "teleop_operator_gui"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+eframe = "0.31"
+gilrs = "0.11"
+gstreamer = "0.23"
+gstreamer-app = "0.23"
+gstreamer-video = "0.23"
+libc = "0.2"
+serde_json = "1"
+tierlink_wire = { path = "../wire" }
+zenoh = { version = "=1.10.1", features = ["unstable"] }
+zstd = "0.13"

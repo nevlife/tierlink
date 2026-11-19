@@ -5,7 +5,14 @@ sent first and dropped when late. Monitoring (telemetry, events, snapshots) uses
 left and is thinned or delayed first when the queue grows.
 
 A C++ library in an `ament_cmake` package. It depends on Zenoh (`zenoh_cpp_vendor`) and yaml-cpp and
-not on `rclcpp`, so nodes and plain programs link it alike.
+not on `rclcpp`, so nodes and plain programs link it alike. The programs that run off the vehicle
+are Rust and need no ROS 2:
+
+| Directory   | Runs on      | Role                                                                                   |
+| ----------- | ------------ | -------------------------------------------------------------------------------------- |
+| `wire/`     | -            | Crate `tierlink_wire`: the data header, reassembly with FEC, acks, catalog and history |
+| `server/`   | the server   | `fleetd`, the receiver of the monitor tier                                             |
+| `operator/` | the operator | The desktop operator: video, vehicle state, drive input                                |
 
 | Header                         | Role                                                                                                                    |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
@@ -18,6 +25,7 @@ not on `rclcpp`, so nodes and plain programs link it alike.
 | `tierlink/wire.hpp`            | The data header, acknowledgements, and gap tracking on the receiver                                                     |
 | `tierlink/zenoh_link.hpp`      | `Uplink` sends one tier's streams over its own session; `Receiver` delivers both tiers on the server                    |
 | `tierlink/control.hpp`         | Small control messages in either direction, and the server's session epochs                                             |
+| `tierlink/teleop_messages.hpp` | Teleop control messages: arm request, motion command, stop and arm state                                                |
 | `tierlink/params.hpp`          | The parameter file (`config/params.yaml`) for the edge, the server and the client                                       |
 
 Delivery is one of three:
@@ -101,6 +109,25 @@ behind a Zenoh router. `deploy/server/` starts both with docker compose. The des
 the vehicle side and the operator, with the TCP and UDP measurements behind it, is in
 [docs/design.md](docs/design.md).
 
+## Operator
+
+`operator/` is a desktop operator in Rust (`cargo run --release -- --connect
+tcp/<server>:7447 --prefix scv/r01 --robot r01`). It shows the front camera, the vehicle's state
+and the link, and sends the drive input (hold Space with W/S/A/D, or RB with the sticks), arm, stop,
+e-stop, e-stop reset and the mux mode (a `cmd_mode` command to the vehicle's monitor tier). The
+dead-man counts as released while no frame arrived for 500 ms. The link panel shows half the round
+trip from the vehicle to the server and from the server to the operator.
+
+The fleet panel lists fleetd's vehicles (`fleet/vehicles`) with their live processes; `drive`
+switches to another vehicle while this one is disarmed. The `History` window asks fleetd for one
+stream's last minutes (`<prefix>/history/<stream>`) and draws the speed of an odometry stream.
+
+`tierlink_teleop` is a debugging operator without video:
+
+```bash
+tierlink_teleop tcp/<server>:7447 scv/r01 r01 0.3 3   # arm, drive at 0.3 m/s for 3 s, stop
+```
+
 ## Measurement
 
 [tools/bench](tools/bench) runs one vehicle's traffic (video, point cloud, telemetry, arm state)
@@ -113,4 +140,5 @@ and compares estimators on the same profile. See its README.
 colcon build --symlink-install --packages-select tierlink
 colcon test --packages-select tierlink
 colcon test-result --test-result-base build/tierlink
+(cd wire && cargo test) && (cd server && cargo test) && (cd operator && cargo test)
 ```

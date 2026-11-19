@@ -1,10 +1,15 @@
-//! The tierlink byte formats that the server reads and writes (include/tierlink/wire.hpp).
+//! The tierlink byte formats for Rust programs (include/tierlink/wire.hpp): the data header, piece
+//! reassembly with XOR FEC, acks, the stream catalog, and fleetd's history reply.
 
 pub struct Header {
     pub seq: u64,
     pub stream_seq: u64,
+    /// The sender's CLOCK_MONOTONIC: comparable with this host's only on the same host.
+    pub sent_ns: i64,
+    pub keyframe: bool,
     pub chunk: u16,
     pub chunks: u16,
+    /// One XOR parity piece per this many pieces; a chunk at or past `chunks` is a parity piece.
     pub fec_group: u8,
 }
 
@@ -17,12 +22,20 @@ fn u16_at(b: &[u8], at: usize) -> u16 {
 }
 
 /// The data header in the Zenoh attachment: seq, stream_seq, sent_ns, keyframe, chunk, chunks,
-/// fec_group. A chunk at or past `chunks` is a parity piece.
+/// fec_group.
 pub fn decode_header(b: &[u8]) -> Option<Header> {
     if b.len() != 30 {
         return None;
     }
-    let h = Header { seq: u64_at(b, 0), stream_seq: u64_at(b, 8), chunk: u16_at(b, 25), chunks: u16_at(b, 27), fec_group: b[29] };
+    let h = Header {
+        seq: u64_at(b, 0),
+        stream_seq: u64_at(b, 8),
+        sent_ns: u64_at(b, 16) as i64,
+        keyframe: b[24] != 0,
+        chunk: u16_at(b, 25),
+        chunks: u16_at(b, 27),
+        fec_group: b[29],
+    };
     (h.chunks > 0 && h.chunk < h.chunks + parity_count(h.chunks, h.fec_group)).then_some(h)
 }
 
@@ -146,13 +159,41 @@ pub fn decode_catalog(b: &[u8]) -> Vec<CatalogEntry> {
         .collect()
 }
 
+/// fleetd's history reply: per message its receive time (Unix ns, u64 LE), length (u32 LE) and
+/// bytes.
+pub fn encode_history<'a>(messages: impl IntoIterator<Item = (u64, &'a [u8])>) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (t, m) in messages {
+        out.extend_from_slice(&t.to_le_bytes());
+        out.extend_from_slice(&(m.len() as u32).to_le_bytes());
+        out.extend_from_slice(m);
+    }
+    out
+}
+
+/// The reverse of `encode_history`; a truncated tail is dropped.
+pub fn decode_history(b: &[u8]) -> Vec<(u64, Vec<u8>)> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at + 12 <= b.len() {
+        let t = u64_at(b, at);
+        let n = u32::from_le_bytes(b[at + 8..at + 12].try_into().unwrap()) as usize;
+        if at + 12 + n > b.len() {
+            break;
+        }
+        out.push((t, b[at + 12..at + 12 + n].to_vec()));
+        at += 12 + n;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn a_parity_piece_rebuilds_one_lost_piece_of_its_group() {
-        // Pieces {1,2,3} {4,5} in groups of two with parity after each group; the last is short.
+        // Pieces {1,2,3} {4,5,6} {7,8} in groups of two with parity after each group.
         let data: Vec<Vec<u8>> = vec![vec![1, 2, 3], vec![4, 5, 6], vec![7, 8]];
         let parity = |group: &[Vec<u8>]| {
             let mut p = vec![0u8; 2 + group.iter().map(|g| g.len()).max().unwrap()];
@@ -170,7 +211,7 @@ mod tests {
             let mut got = None;
             for (i, (chunk, p)) in sent.iter().enumerate() {
                 if i != lost {
-                    let h = Header { seq: i as u64, stream_seq: 7, chunk: *chunk, chunks: 3, fec_group: 2 };
+                    let h = Header { seq: i as u64, stream_seq: 7, sent_ns: 0, keyframe: false, chunk: *chunk, chunks: 3, fec_group: 2 };
                     got = r.add(&h, p.clone()).or(got);
                 }
             }
@@ -179,25 +220,33 @@ mod tests {
     }
 
     #[test]
-    fn header_ack_and_catalog_layouts() {
+    fn header_and_ack_layouts() {
         let mut b = 3u64.to_le_bytes().to_vec();
         b.extend_from_slice(&9u64.to_le_bytes());
         b.extend_from_slice(&5u64.to_le_bytes());
-        b.push(0);
+        b.push(1);
         b.extend_from_slice(&1u16.to_le_bytes());
         b.extend_from_slice(&2u16.to_le_bytes());
         b.push(0);
         let h = decode_header(&b).unwrap();
-        assert!(h.seq == 3 && h.stream_seq == 9 && h.chunk == 1 && h.chunks == 2);
+        assert!(h.seq == 3 && h.stream_seq == 9 && h.sent_ns == 5 && h.keyframe && h.chunk == 1 && h.chunks == 2 && h.fec_group == 0);
         assert!(decode_header(&b[..29]).is_none());
         let mut r = Reassembler::default();
-        let piece = |seq, chunk, chunks| Header { seq, stream_seq: seq, chunk, chunks, fec_group: 0 };
-        assert!(r.add(&piece(4, 1, 2), vec![3]).is_none());
-        assert!(r.add(&piece(3, 0, 2), vec![9]).is_none());
-        assert_eq!(r.add(&piece(4, 0, 2), vec![1, 2]), Some(vec![1, 2, 3]));
+        let piece = |seq, chunk| Header { seq, stream_seq: seq, sent_ns: 0, keyframe: false, chunk, chunks: 2, fec_group: 0 };
+        assert!(r.add(&piece(4, 1), vec![3]).is_none());
+        assert!(r.add(&piece(3, 0), vec![9]).is_none());
+        assert_eq!(r.add(&piece(4, 0), vec![1, 2]), Some(vec![1, 2, 3]));
         assert_eq!(&encode_ack(3, 4)[8..], &4u64.to_le_bytes());
+    }
+
+    #[test]
+    fn catalog_and_history_layouts() {
         let c = decode_catalog(b"odom\tnav_msgs/msg/Odometry\t/odom\tlatest\nbad line\n");
         assert_eq!(c.len(), 1);
-        assert_eq!(c[0].topic, "/odom");
+        assert!(c[0].name == "odom" && c[0].msg_type == "nav_msgs/msg/Odometry" && c[0].topic == "/odom");
+        let mut b = encode_history([(5, &[7u8, 8][..]), (6, &[9u8][..])]);
+        assert_eq!(decode_history(&b), vec![(5, vec![7, 8]), (6, vec![9])]);
+        b.pop();
+        assert_eq!(decode_history(&b), vec![(5, vec![7, 8])]);
     }
 }

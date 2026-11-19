@@ -14,7 +14,9 @@ services:
       # fleetd's own link, kept off the public ports.
       - --listen=tcp/127.0.0.1:${LOCAL_PORT}
   fleetd:
-    build: ../../server
+    build:
+      context: ../..
+      dockerfile: server/Dockerfile
     network_mode: host
     restart: unless-stopped
     depends_on: [zenohd]

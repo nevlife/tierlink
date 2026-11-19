@@ -1,0 +1,6 @@
+*
+!wire/Cargo.toml
+!wire/src
+!server/Cargo.toml
+!server/Cargo.lock
+!server/src

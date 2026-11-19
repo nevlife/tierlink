@@ -705,6 +705,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "tierlink_wire",
  "zenoh",
  "zstd",
 ]
@@ -2851,6 +2852,10 @@ checksum = "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070"
 dependencies = [
  "cfg-if",
 ]
+
+[[package]]
+name = "tierlink_wire"
+version = "0.1.0"
 
 [[package]]
 name = "time"

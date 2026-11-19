@@ -11,7 +11,6 @@
 //!                                          ns, u64 LE), CDR length (u32 LE) and CDR
 
 mod store;
-mod wire;
 
 const RANGE_SECTOR: &str = "fleet_telemetry/RangeSector";
 
@@ -22,6 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
+use tierlink_wire as wire;
 use zenoh::qos::{CongestionControl, Priority};
 use zenoh::sample::{Sample, SampleKind};
 use zenoh::{Session, Wait};
@@ -175,12 +175,7 @@ fn watch(
                 .get(&stream)
                 .map(|r| r.iter().filter(|(t, _)| *t >= since).cloned().collect())
                 .unwrap_or_default();
-            let mut body = Vec::new();
-            for (t, cdr) in messages {
-                body.extend_from_slice(&t.to_le_bytes());
-                body.extend_from_slice(&(cdr.len() as u32).to_le_bytes());
-                body.extend_from_slice(&cdr);
-            }
+            let body = wire::encode_history(messages.iter().map(|(t, cdr)| (*t, &cdr[..])));
             let _ = query.reply(query.key_expr().clone(), body).wait();
         })
         .wait()
