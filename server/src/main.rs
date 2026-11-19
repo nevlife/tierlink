@@ -13,6 +13,8 @@
 mod store;
 mod wire;
 
+const RANGE_SECTOR: &str = "fleet_telemetry/RangeSector";
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -114,13 +116,19 @@ fn watch(
                 let name = sample.key_expr().as_str().rsplit('/').next().unwrap_or("").to_string();
                 let mut st = st.lock().unwrap();
                 let Some(item) = st.pieces.entry(name.clone()).or_default().add(&h, sample.payload().to_bytes().to_vec()) else { return };
-                let Ok(cdr) = zstd::decode_all(&item[..]) else { return };
                 let now = unix_ns();
                 let Some((msg_type, topic)) = st.catalog.get(&name).cloned() else {
                     st.unknown += 1;
                     return;
                 };
-                if let Err(e) = store.lock().unwrap().write(&topic, &msg_type, now, &cdr) {
+                // A range-coded lidar sector is not zstd CDR; it is stored as it came.
+                let (cdr, encoding) = if msg_type == RANGE_SECTOR {
+                    (item, RANGE_SECTOR)
+                } else {
+                    let Ok(cdr) = zstd::decode_all(&item[..]) else { return };
+                    (cdr, "cdr")
+                };
+                if let Err(e) = store.lock().unwrap().write(&topic, &msg_type, encoding, now, &cdr) {
                     eprintln!("{p}: storing {name}: {e}");
                 }
                 let ring = st.history.entry(name).or_default();

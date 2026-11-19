@@ -37,9 +37,11 @@ void DelayTracker::on_ack(std::uint64_t id, std::int64_t received_remote_ns, Nan
   std::optional<Nanos> sent_at;
   while (!unacked_.empty() && unacked_.front().id <= id) {
     in_flight_ -= unacked_.front().bytes;
-    acked_total_ += unacked_.front().bytes;
     if (unacked_.front().id == id) {
+      acked_total_ += unacked_.front().bytes;
       sent_at = unacked_.front().at;
+    } else {
+      lost_total_ += unacked_.front().bytes;
     }
     unacked_.pop_front();
   }
@@ -50,6 +52,16 @@ void DelayTracker::on_ack(std::uint64_t id, std::int64_t received_remote_ns, Nan
   const std::int64_t min = one_way_.push(now, one_way);
   queue_delay_ = Nanos(std::max<std::int64_t>(one_way - min, 0));
   rtt_.push(now, (now - *sent_at).count());
+  if (trendline_.on_packet(sent_at->count(), received_remote_ns) == Usage::Over) {
+    over_seen_ = true;
+  }
+}
+
+Usage DelayTracker::take_usage()
+{
+  const Usage u = over_seen_ ? Usage::Over : trendline_.usage();
+  over_seen_ = false;
+  return u;
 }
 
 Feedback DelayTracker::feedback(Nanos now) const
@@ -59,7 +71,9 @@ Feedback DelayTracker::feedback(Nanos now) const
     const Nanos base(rtt_.min().value_or(0));
     stall = std::max(now - unacked_.front().at - base, Nanos{0});
   }
-  return Feedback{queue_delay_, stall, in_flight_};
+  return Feedback{
+    queue_delay_, stall,       in_flight_, trendline_.usage(), acked_total_, lost_total_,
+    Nanos(rtt_.min().value_or(0))};
 }
 
 }  // namespace tierlink

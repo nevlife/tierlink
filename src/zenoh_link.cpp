@@ -39,11 +39,13 @@ zenoh::Publisher declare_stream(
   auto options = zenoh::Session::PublisherOptions::create_default();
   options.priority = teleop ? Z_PRIORITY_INTERACTIVE_HIGH : Z_PRIORITY_DATA;
   options.is_express = teleop;
+  const bool best_effort = spec.delivery == Delivery::Frame || spec.best_effort;
   // Block keeps reliable data instead of dropping it in Zenoh's queue; the scheduler already
-  // paces it below the link budget.
-  options.congestion_control =
-    spec.delivery == Delivery::Reliable ? Z_CONGESTION_CONTROL_BLOCK : Z_CONGESTION_CONTROL_DROP;
-  if (spec.delivery == Delivery::Frame) {
+  // paces it below the link budget. A best-effort stream may lose it anyway.
+  options.congestion_control = spec.delivery == Delivery::Reliable && !best_effort
+                                 ? Z_CONGESTION_CONTROL_BLOCK
+                                 : Z_CONGESTION_CONTROL_DROP;
+  if (best_effort) {
     options.reliability = Z_RELIABILITY_BEST_EFFORT;
   }
   return session.declare_publisher(zenoh::KeyExpr(base + "/data/" + spec.name), std::move(options));
@@ -195,6 +197,12 @@ bool Uplink::take_keyframe_request(std::size_t id)
   return requested;
 }
 
+double Uplink::parity_ratio(std::size_t id) const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return scheduler_.parity_ratio(id);
+}
+
 void Uplink::set_cap(std::optional<std::uint64_t> bps)
 {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -225,8 +233,8 @@ std::vector<Uplink::Outgoing> Uplink::take_batch()
     if (piece->chunk == 0) {
       item_seq_[id] = stream_seq_[id]++;
     }
-    const Header header{next_seq_++,     item_seq_[id], now.count(),
-                        piece->keyframe, piece->chunk,  piece->chunks};
+    const Header header{next_seq_++,   item_seq_[id], now.count(),     piece->keyframe,
+                        piece->chunk, piece->chunks, piece->fec_group};
     tracker_.on_sent(header.seq, piece->payload.size(), now);
     batch.push_back(Outgoing{id, header, std::move(piece->payload)});
   }
@@ -236,18 +244,24 @@ std::vector<Uplink::Outgoing> Uplink::take_batch()
 LinkReport Uplink::report(Nanos now)
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  const auto [sent, acked] = tracker_.totals();
-  totals_.emplace_back(now, sent, acked);
+  const Feedback f = tracker_.feedback(now);
+  totals_.emplace_back(now, tracker_.sent_total(), f.acked_bytes, f.lost_bytes);
   while (totals_.size() > 2 && now - std::get<0>(totals_[1]) >= std::chrono::seconds(1)) {
     totals_.pop_front();
   }
-  const auto & [t0, sent0, acked0] = totals_.front();
+  const auto & [t0, sent0, acked0, lost0] = totals_.front();
   const double seconds = std::chrono::duration<double>(now - t0).count();
   const auto rate = [seconds](std::uint64_t bytes) {
     return seconds > 0.0 ? static_cast<std::uint64_t>(static_cast<double>(bytes) * 8 / seconds) : 0;
   };
-  const Feedback f = tracker_.feedback(now);
-  return LinkReport{tier_, rate(sent - sent0), rate(acked - acked0), f.queue_delay, f.stall};
+  return LinkReport{
+    tier_,
+    rate(tracker_.sent_total() - sent0),
+    rate(f.acked_bytes - acked0),
+    f.queue_delay,
+    f.stall,
+    rate(f.lost_bytes - lost0),
+    tracker_.take_usage()};
 }
 
 void Uplink::run(Nanos tick, Nanos report_period)
@@ -297,7 +311,7 @@ Receiver::Receiver(
         state->acks.put(zenoh::Bytes(encode_ack(header->seq, now.count())));
         std::string stream = last_segment(sample.get_keyexpr());
         Arrival arrival{};
-        std::optional<std::vector<std::uint8_t>> item;
+        std::optional<Assembled> item;
         {
           std::lock_guard<std::mutex> lock(state->mutex);
           item = state->pieces[stream].add(*header, sample.get_payload().as_vector());
@@ -312,7 +326,8 @@ Receiver::Receiver(
             zenoh::Bytes(std::vector<std::uint8_t>(stream.begin(), stream.end())));
         }
         on_received(Received{
-          tier, std::move(stream), header->seq, header->keyframe, arrival.lost, std::move(*item)});
+          tier, std::move(stream), header->seq, header->keyframe, arrival.lost,
+          std::move(item->item), item->recovered});
       },
       zenoh::closures::none));
   }

@@ -1,6 +1,8 @@
 #ifndef TIERLINK__RATE_CONTROLLER_HPP_
 #define TIERLINK__RATE_CONTROLLER_HPP_
 
+#include "tierlink/trendline.hpp"
+
 #include <chrono>
 #include <cstdint>
 #include <optional>
@@ -18,6 +20,13 @@ struct Feedback
   // Age of the oldest unacked item beyond the minimum round trip; grows while acks stop.
   Nanos stall{0};
   std::uint64_t in_flight_bytes = 0;
+  // The delay gradient at the latest acknowledgement (Trendline).
+  Usage usage = Usage::Normal;
+  // Totals since construction. An item counts as lost once a later one is acknowledged.
+  std::uint64_t acked_bytes = 0;
+  std::uint64_t lost_bytes = 0;
+  // Minimum round trip over the window; zero before the first acknowledgement.
+  Nanos min_rtt{0};
 };
 
 struct Decision
@@ -72,6 +81,37 @@ private:
   std::uint64_t bps_;
   std::optional<Nanos> last_cut_;
   std::optional<Nanos> clear_since_;
+};
+
+struct LedbatConfig
+{
+  // The queue delay to keep; above it the window shrinks, below it grows.
+  Nanos target;
+  double gain;
+  std::uint64_t segment_bytes;
+  std::uint64_t min_window_bytes;
+  std::uint64_t start_window_bytes;
+  std::uint64_t max_window_bytes;
+  std::uint64_t rate_bps;
+  // At most one halving per hold, on loss or once acknowledgements stopped for stall_above.
+  Nanos hold;
+  Nanos stall_above;
+};
+
+// LEDBAT (RFC 6817): yields to other traffic by keeping the queue delay at a target, so
+// monitoring over TCP keeps the send buffer and the bottleneck queue short in front of the video.
+class Ledbat : public RateController
+{
+public:
+  explicit Ledbat(const LedbatConfig & config);
+  Decision update(Nanos now, const Feedback & feedback) override;
+
+private:
+  LedbatConfig config_;
+  double window_;
+  std::uint64_t acked_seen_ = 0;
+  std::uint64_t lost_seen_ = 0;
+  std::optional<Nanos> last_halving_;
 };
 
 }  // namespace tierlink

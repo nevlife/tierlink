@@ -37,7 +37,9 @@ impl Store {
         Store { dir, hour: None, writer: None, channels: HashMap::new(), sequence: 0 }
     }
 
-    pub fn write(&mut self, topic: &str, msg_type: &str, log_ns: u64, cdr: &[u8]) -> anyhow::Result<()> {
+    /// `encoding` is "cdr" for ROS messages; anything else is stored with an empty schema of that
+    /// encoding.
+    pub fn write(&mut self, topic: &str, msg_type: &str, encoding: &str, log_ns: u64, cdr: &[u8]) -> anyhow::Result<()> {
         let hour = utc_hour(log_ns);
         if self.hour.as_deref() != Some(hour.as_str()) {
             self.finish()?;
@@ -54,8 +56,9 @@ impl Store {
         let channel = match self.channels.get(topic) {
             Some(c) => *c,
             None => {
-                let schema = writer.add_schema(msg_type, "ros2msg", &[])?;
-                let c = writer.add_channel(schema, topic, "cdr", &BTreeMap::new())?;
+                let schema_encoding = if encoding == "cdr" { "ros2msg" } else { encoding };
+                let schema = writer.add_schema(msg_type, schema_encoding, &[])?;
+                let c = writer.add_channel(schema, topic, encoding, &BTreeMap::new())?;
                 self.channels.insert(topic.to_string(), c);
                 c
             }
@@ -96,7 +99,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         for _ in 0..2 {
             let mut s = Store::new(dir.clone());
-            s.write("/odom", "nav_msgs/msg/Odometry", 1_794_479_400 * 1_000_000_000, &[0, 1, 0, 0, 7]).unwrap();
+            s.write("/odom", "nav_msgs/msg/Odometry", "cdr", 1_794_479_400 * 1_000_000_000, &[0, 1, 0, 0, 7]).unwrap();
             s.finish().unwrap();
         }
         let first = std::fs::read(dir.join("20261112-10.mcap")).unwrap();

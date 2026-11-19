@@ -29,12 +29,16 @@ struct StreamSpec
   std::string name;
   Tier tier;
   Delivery delivery;
-  // Frames reference earlier ones (H.264, H.265), so a dropped frame breaks decoding until a
-  // keyframe.
+  // A dropped frame breaks decoding until a keyframe (H.264, H.265).
   bool inter_frame = false;
   std::size_t capacity = 256;
   // Frame only. Zero: an unsent frame is replaced by the next one.
   std::chrono::nanoseconds max_delay{0};
+  // One XOR parity piece per this many pieces; needs pieces that fit one datagram.
+  std::uint8_t fec_group = 0;
+  // Takes the UDP link, as Frame streams always do.
+  bool best_effort = false;
+  std::size_t chunk_bytes = 0;
 };
 
 struct Item

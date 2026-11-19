@@ -1,0 +1,7 @@
+# LTE with a 400 ms handover outage every 15 s and a 3 s capacity dip after it.
+0 up delay 30ms 8ms rate 8mbit loss 0.3% limit 400
+0 down delay 25ms 5ms rate 10mbit loss 0.3% limit 400
+10 up delay 30ms 8ms rate 8mbit loss 100% limit 400
+10.4 up delay 40ms 12ms rate 2mbit loss 1% limit 400
+13.4 up delay 30ms 8ms rate 8mbit loss 0.3% limit 400
+15 up delay 30ms 8ms rate 8mbit loss 0.3% limit 400

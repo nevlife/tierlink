@@ -1,0 +1,2 @@
+# 2 % random loss on a 30 ms path with 3 Mbit/s: loss that is not congestion.
+0 up delay 30ms 3ms rate 3mbit loss 2% limit 100

@@ -17,7 +17,7 @@ namespace tierlink
 // what the codec produced.
 struct Header
 {
-  static constexpr std::size_t kSize = 29;
+  static constexpr std::size_t kSize = 30;
   // Per session, increasing in sending order across all streams of the tier.
   std::uint64_t seq;
   // Per stream, one per published item, so the receiver sees what the transport dropped.
@@ -27,14 +27,33 @@ struct Header
   // An item larger than the chunk size goes out as `chunks` pieces under one stream_seq.
   std::uint16_t chunk = 0;
   std::uint16_t chunks = 1;
+  // chunk >= chunks: parity piece j of data chunks [j * fec_group, (j + 1) * fec_group).
+  std::uint8_t fec_group = 0;
 
   std::vector<std::uint8_t> encode() const;
   static std::optional<Header> decode(const std::vector<std::uint8_t> & bytes);
   bool operator==(const Header & o) const
   {
     return seq == o.seq && stream_seq == o.stream_seq && sent_ns == o.sent_ns &&
-           keyframe == o.keyframe && chunk == o.chunk && chunks == o.chunks;
+           keyframe == o.keyframe && chunk == o.chunk && chunks == o.chunks &&
+           fec_group == o.fec_group;
   }
+};
+
+std::uint16_t parity_count(std::uint16_t chunks, std::uint8_t fec_group);
+
+// The XOR of the pieces' sizes (2 bytes), then of their bytes padded to the longest: rebuilds any
+// one piece of the group from the others.
+class Parity
+{
+public:
+  void add(const std::vector<std::uint8_t> & piece);
+  bool empty() const { return !added_; }
+  std::vector<std::uint8_t> take();
+
+private:
+  std::vector<std::uint8_t> bytes_{0, 0};
+  bool added_ = false;
 };
 
 // The sequence acknowledged and the receiver's clock when it arrived.
@@ -68,18 +87,29 @@ private:
   std::optional<Nanos> last_request_;
 };
 
-// Puts one stream's pieces back together. A newer item drops an unfinished older one, and a late
-// piece of an older item is ignored.
+struct Assembled
+{
+  std::vector<std::uint8_t> item;
+  std::size_t recovered;
+};
+
+// Puts one stream's pieces back together, rebuilding one lost piece per FEC group. A newer item
+// drops an unfinished older one, and a late piece of an older item is ignored.
 class Reassembler
 {
 public:
-  std::optional<std::vector<std::uint8_t>> add(
-    const Header & header, std::vector<std::uint8_t> piece);
+  std::optional<Assembled> add(const Header & header, std::vector<std::uint8_t> piece);
 
 private:
+  void recover(std::size_t group);
+
   std::optional<std::uint64_t> newest_;
+  std::uint8_t fec_group_ = 0;
   std::vector<std::vector<std::uint8_t>> pieces_;
+  std::vector<bool> present_;
+  std::vector<std::vector<std::uint8_t>> parity_;
   std::size_t received_ = 0;
+  std::size_t recovered_ = 0;
   bool done_ = false;
 };
 

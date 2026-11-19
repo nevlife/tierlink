@@ -1,0 +1,7 @@
+# Uplink bandwidth steps, 20 s each: 3 -> 1 -> 0.5 -> 2 Mbit/s. The last line holds the 2 Mbit/s
+# step until the profile repeats.
+0 up delay 30ms 3ms rate 3mbit limit 100
+20 up delay 30ms 3ms rate 1mbit limit 100
+40 up delay 30ms 3ms rate 500kbit limit 100
+60 up delay 30ms 3ms rate 2mbit limit 100
+80 up delay 30ms 3ms rate 2mbit limit 100

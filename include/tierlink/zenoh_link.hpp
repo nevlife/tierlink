@@ -25,9 +25,8 @@
 #include <utility>
 #include <vector>
 
-// Keys are <prefix>/<tier>/data/<stream>, <prefix>/<tier>/ack and <prefix>/<tier>/keyframe. Frame
-// streams are published best effort: behind a router with a UDP link (`?rel=0`) they take UDP, so
-// a lost packet never holds later frames; everything else stays reliable (TCP).
+// Best-effort streams take the UDP link (`?rel=0`) of a router, so a lost packet never holds later
+// frames; everything else stays reliable (TCP).
 namespace tierlink
 {
 
@@ -103,6 +102,7 @@ public:
   // True once after this stream dropped a frame or the receiver asked for a keyframe; the encoder
   // checks it before each frame.
   bool take_keyframe_request(std::size_t id);
+  double parity_ratio(std::size_t id) const;
   // An upper bound from outside, such as the allowance the teleop process publishes.
   void set_cap(std::optional<std::uint64_t> bps);
   std::pair<std::optional<Decision>, Feedback> status() const;
@@ -126,8 +126,8 @@ private:
   std::optional<std::uint64_t> cap_bps_;
   std::optional<Decision> decision_;
   Tier tier_;
-  // (time, sent bytes, acked bytes) over the last second, for the report's rates.
-  std::deque<std::tuple<Nanos, std::uint64_t, std::uint64_t>> totals_;
+  // (time, sent, acked, lost bytes) over the last second, for the report's rates.
+  std::deque<std::tuple<Nanos, std::uint64_t, std::uint64_t, std::uint64_t>> totals_;
   std::uint64_t next_seq_ = 0;
   std::vector<std::uint64_t> stream_seq_;
   // The stream_seq of the item whose pieces are going out.
@@ -152,6 +152,8 @@ struct Received
   // Items of this stream that the transport dropped just before this one.
   std::uint64_t lost;
   std::vector<std::uint8_t> payload;
+  // Pieces of this item rebuilt from parity.
+  std::size_t recovered = 0;
 };
 
 // The server side: delivers every stream of both tiers, acknowledges each sample and asks for a

@@ -31,12 +31,14 @@ public:
   explicit DelayTracker(Nanos window) : one_way_(window), rtt_(window) {}
   // Ids increase in sending order.
   void on_sent(std::uint64_t id, std::uint64_t bytes, Nanos at);
-  // The transport is ordered, so an acknowledgement also covers every earlier item.
+  // Acknowledgements arrive in sending order, so an earlier item still unacknowledged was lost:
+  // over UDP by the network, over TCP in Zenoh's queue.
   void on_ack(std::uint64_t id, std::int64_t received_remote_ns, Nanos now);
   Feedback feedback(Nanos now) const;
-  // Bytes sent and acknowledged since construction, for the link report's rates. An ack covers
-  // every earlier item, so over UDP a lost item counts as acknowledged once a later one is.
-  std::pair<std::uint64_t, std::uint64_t> totals() const { return {sent_total_, acked_total_}; }
+  // Over if the gradient showed overuse since the last call, else the current usage. A report
+  // every 100 ms would otherwise miss an overuse that cleared in between.
+  Usage take_usage();
+  std::uint64_t sent_total() const { return sent_total_; }
 
 private:
   struct Sent
@@ -49,11 +51,14 @@ private:
   std::uint64_t in_flight_ = 0;
   std::uint64_t sent_total_ = 0;
   std::uint64_t acked_total_ = 0;
+  std::uint64_t lost_total_ = 0;
   // Receiver clock minus sender clock plus path delay; the unknown offset cancels against the
   // minimum, so the clocks need no synchronization. The window bounds clock drift.
   WindowMin one_way_;
   WindowMin rtt_;
   Nanos queue_delay_{0};
+  Trendline trendline_;
+  bool over_seen_ = false;
 };
 
 }  // namespace tierlink

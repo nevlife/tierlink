@@ -10,6 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>zenoh_cpp_vendor</depend>
+  <depend>yaml-cpp</depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
 

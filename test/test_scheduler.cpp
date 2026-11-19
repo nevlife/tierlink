@@ -98,3 +98,55 @@ TEST(Scheduler, ALargeItemGoesOutInPiecesAndTeleopGoesBetweenThem)
   EXPECT_EQ(p->payload.size(), 10'000u - 2 * 4096u);
   EXPECT_FALSE(s.next(std::chrono::milliseconds(100)));
 }
+
+TEST(Scheduler, AParityPieceFollowsEachGroupAndTheReceiverRebuildsALostPiece)
+{
+  auto video = spec("video", Tier::Teleop);
+  video.fec_group = 2;
+  Scheduler s({video}, 10'000'000, std::chrono::milliseconds(100), 1000);
+  s.next(std::chrono::milliseconds(0));
+  std::vector<std::uint8_t> payload(2500);
+  for (std::size_t i = 0; i < payload.size(); ++i) {
+    payload[i] = static_cast<std::uint8_t>(i * 7);
+  }
+  s.push(0, Item{payload, true}, std::chrono::milliseconds(0));
+  std::vector<tierlink::Piece> pieces;
+  while (auto p = s.next(std::chrono::milliseconds(100))) {
+    pieces.push_back(*p);
+  }
+  // Data 0, 1, parity 3, data 2, parity 4.
+  ASSERT_EQ(pieces.size(), 5u);
+  const std::vector<std::uint16_t> order{0, 1, 3, 2, 4};
+  for (std::size_t i = 0; i < pieces.size(); ++i) {
+    EXPECT_EQ(pieces[i].chunk, order[i]);
+    EXPECT_EQ(pieces[i].chunks, 3u);
+  }
+  tierlink::Reassembler r;
+  std::optional<tierlink::Assembled> got;
+  for (std::size_t i = 0; i < pieces.size(); ++i) {
+    if (i == 3) {
+      continue;
+    }
+    const auto & p = pieces[i];
+    auto a = r.add(tierlink::Header{i, 0, 0, true, p.chunk, p.chunks, p.fec_group}, p.payload);
+    got = a ? a : got;
+  }
+  ASSERT_TRUE(got);
+  EXPECT_EQ(got->item, payload);
+  EXPECT_EQ(got->recovered, 1u);
+}
+
+TEST(Scheduler, ParityRatioFollowsTheItemsSent)
+{
+  auto video = spec("video", Tier::Teleop);
+  video.fec_group = 4;
+  Scheduler s({video}, 100'000'000, std::chrono::milliseconds(100), 1000);
+  s.next(std::chrono::milliseconds(0));
+  for (int i = 0; i < 50; ++i) {
+    s.push(0, Item{std::vector<std::uint8_t>(3000, 1), false}, std::chrono::milliseconds(i));
+    while (s.next(std::chrono::milliseconds(i + 1))) {
+    }
+  }
+  // Three pieces and one parity piece of 1002 bytes per 3000-byte item.
+  EXPECT_NEAR(s.parity_ratio(0), 1002.0 / 3000.0, 0.01);
+}

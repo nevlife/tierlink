@@ -62,3 +62,18 @@ TEST(DelayTracker, OldMinimumLeavesTheWindow)
   t.on_ack(1, kOffset + ms(1030), std::chrono::milliseconds(1040));
   EXPECT_EQ(t.feedback(std::chrono::milliseconds(1040)).queue_delay, Nanos{0});
 }
+
+TEST(DelayTracker, AnItemSkippedByALaterAckIsLost)
+{
+  DelayTracker t(std::chrono::seconds(10));
+  for (int id = 0; id < 3; ++id) {
+    t.on_sent(id, 500, id * std::chrono::milliseconds(1));
+  }
+  t.on_ack(0, kOffset + ms(30), std::chrono::milliseconds(40));
+  t.on_ack(2, kOffset + ms(32), std::chrono::milliseconds(42));
+  const auto f = t.feedback(std::chrono::milliseconds(42));
+  EXPECT_EQ(f.acked_bytes, 1000u);
+  EXPECT_EQ(f.lost_bytes, 500u);
+  EXPECT_EQ(f.in_flight_bytes, 0u);
+  EXPECT_EQ(f.min_rtt, std::chrono::milliseconds(40));
+}

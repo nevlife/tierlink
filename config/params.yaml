@@ -1,0 +1,60 @@
+# One file for the edge (tierlink_edge), the server and the client. Each reads `link` and its own
+# section; values in `link` must be the same on every side.
+link:
+  # One UDP datagram per batch; above the path MTU (1500, often 1400 on LTE) a datagram is
+  # fragmented and lost with any of its fragments. 1200 also fits inside a WireGuard tunnel.
+  batch_size: 1400
+  # A link that went silent is declared lost after one lease; keep-alives go out lease / keep_alive.
+  lease_ms: 1000
+  keep_alive: 4
+  # Kernel send buffer of the TCP link in bytes; 0 keeps the OS default, which grows to MBs and
+  # hides congestion behind seconds of queued data.
+  tcp_sndbuf: 0
+  # Items larger than this go out in pieces of this size.
+  chunk_bytes: 4096
+  # Frame streams (video over UDP) go out in pieces that fit one datagram with Zenoh's headers,
+  # and one XOR parity piece after every fec_group pieces rebuilds one lost piece of the group
+  # (0: no parity). 4 costs a quarter more bandwidth.
+  frame_chunk_bytes: 1200
+  fec_group: 4
+
+edge:
+  prefix: "scv/r01"
+  # The vehicle's processes connect here.
+  listen: ["tcp/127.0.0.1:7447"]
+  # The server: reliable data over TCP, best-effort frames over UDP.
+  connect: ["tcp/127.0.0.1:7448?rel=1", "udp/127.0.0.1:7449?rel=0"]
+  # How often the budgets are recomputed and published.
+  period_ms: 100
+  # aimd: cut above a delay threshold, step up after a clear period.
+  # gcc: delay gradient (trendline) and loss, as in WebRTC. On the netem steps it used 10 to 15
+  # points more of the link but doubled the video's p95 delay (docs/design.md 5.3).
+  estimator: "aimd"
+  rate:
+    start_kbps: 500
+    min_kbps: 150
+    max_kbps: 4000
+  aimd:
+    factor: 0.85
+    increase: 0.1
+    step_kbps: 100
+    hold_ms: 300
+    probe_ms: 1000
+    congested_above_ms: 100
+    clear_below_ms: 30
+  gcc:
+    decrease: 0.85
+    increase_per_s: 0.08
+    additive_kbps_per_s: 60
+    hold_ms: 300
+    congested_above_ms: 100
+    loss_high: 0.10
+    loss_low: 0.02
+  split:
+    # The teleop encoder's range (teleop_video's rate.*).
+    teleop_min_kbps: 150
+    teleop_max_kbps: 2000
+    monitor_floor_kbps: 30
+    monitor_stop_above_ms: 50
+    report_timeout_ms: 500
+    acked_within_ms: 3000
